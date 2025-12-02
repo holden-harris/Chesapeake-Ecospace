@@ -1,12 +1,13 @@
 ## Load packages
 library(marmap)
 library(terra)
+windows()
 
 ## Set resolution ------------------------------------------------------------
-lon1 <- -77.5   ## westernmost lon
-lon2 <- -75.5   ## easternmost lon
-lat1 <-  36.7   ## southernmost lat
-lat2 <-  39.7   ## northernmost lat
+lon1 <- -77.4   ## westernmost lon
+lon2 <- -75.52   ## easternmost lon
+lat1 <-  36.7    ## southernmost lat
+lat2 <-  39.65    ## northernmost lat
 
 ## 
 ## Resolution is in arc-minutes; 1' ≈ ~1–2 km depending on latitude
