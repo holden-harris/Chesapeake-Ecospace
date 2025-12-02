@@ -1,3 +1,5 @@
+rm(list = ls())
+
 ## Load packages
 library(marmap)
 library(terra)
@@ -5,7 +7,7 @@ windows()
 
 ## Set resolution ------------------------------------------------------------
 lon1 <- -77.4   ## westernmost lon
-lon2 <- -75.52   ## easternmost lon
+lon2 <- -75.55   ## easternmost lon
 lat1 <-  36.7    ## southernmost lat
 lat2 <-  39.65    ## northernmost lat
 
@@ -71,7 +73,6 @@ depth_rast4
 plot(depth_rast4)
 ## --> 48 rows x 30 cols = 1440
 
-
 ## Get resolutions -------------------------------------------------------------
 ## Cell size of original
 res(depth_rast)
@@ -99,15 +100,17 @@ summ <- function(rast, name) {
   dx_m  <- res_deg[1] * 111320 * cos(mean_lat * pi/180)
   
   data.frame(
-    Raster = name,
-    Lon_deg = res_deg[1],
-    Lat_deg = res_deg[2],
-    dx_m = dx_m,
-    dy_m = dy_m,
-    dx_km = dx_m / 1000,
-    dy_km = dy_m / 1000,
-    Cell_km = paste0(round(dx_m/1000, 2), " × ", round(dy_m/1000, 2)),
-    sq_km = (dx_m / 1000) * (dy_m / 1000)
+    Raster   = name,
+    Lon_deg  = res_deg[1],
+    Lat_deg  = res_deg[2],
+    Long_sec = res_deg[1] * 3600,
+    Lat_sec  = res_deg[2] * 3600, 
+    dx_m     = dx_m,
+    dy_m     = dy_m,
+    dx_km    = dx_m / 1000,
+    dy_km    = dy_m / 1000,
+    Cell_km  = paste0(round(dx_m/1000, 2), " × ", round(dy_m/1000, 2)),
+    sq_km =   (dx_m / 1000) * (dy_m / 1000)
   )
 }
 
@@ -126,4 +129,21 @@ plot(depth_rast2, colNA='gray', main=paste0(round(tab$sq_km[2]), " sq. km | ", d
 plot(depth_rast3, colNA='gray', main=paste0(round(tab$sq_km[3]), " sq. km | ", dim(depth_rast3)[1],'x',dim(depth_rast3)[2]))
 plot(depth_rast4, colNA='gray', main=paste0(round(tab$sq_km[4]), " sq. km | ", dim(depth_rast4)[1],'x',dim(depth_rast4)[2]))
 par(mfrow=c(1,1))
+
+## ----------------------------------------------------------------------------
+## Write out depth/base map
+
+## Choose the raster to export
+depth_base <- depth_rast2   ## aggregated (fact = 2) depth in meters
+plot(depth_base)
+
+## Write ESRI ASCII grid for Ecospace
+writeRaster(
+  depth_base,
+  filename = "./data/derived/base_map.asc",  
+  filetype = "ascii",                       ## ESRI ASCII grid
+  overwrite = TRUE,
+)
+
+
 
