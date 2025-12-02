@@ -1,6 +1,113 @@
+### -----------------------------
+###  PROJECT-WIDE IGNORE RULES
+
+
 .Rproj.user
 .Rhistory
 .RData
 .Ruserdata
 
+## Folders
 environmental-drivers/ches-bay-atlas/
+
+## NetCDF (ROMS-ECB, CMIP6, downscaled drivers)
+*.nc
+*.nc4
+*.cdf
+
+## GIS / spatial files
+*.shp
+*.shx
+*.dbf
+*.prj
+*.sbn
+*.sbx
+*.cpg
+*.qpj
+*.geojson
+*.topojson
+*.gdb
+*.gpkg
+*.kml
+*.kmz
+*.tif
+*.tiff
+*.vrt
+*.aux
+*.xml
+*.ovr
+
+## Raster data / grids
+*.grd
+*.asc
+*.bil
+*.bip
+*.bsq
+
+
+## Large tables from IMPLAN or stakeholder scoring
+*_IMPLAN_*.csv
+*_scores_*.csv
+
+## EwE-specific temporary files (if using GUI or batch runs)
+*.eii
+*.eif
+*.mex
+*.bak
+*.dat
+*.hdl
+
+## Local configuration files
+*.Renviron
+*.Rprofile
+.Rproj.user/
+.Rhistory
+.RData
+.Ruserdata
+
+## Python cache
+__pycache__/
+*.pyc
+*.pyo
+
+### -----------------------------
+###  DEVELOPMENT ENVIRONMENTS
+### -----------------------------
+
+# RStudio
+.Rproj.user/
+*.Rproj
+
+# VS Code
+.vscode/
+
+# Conda / virtualenv
+env/
+venv/
+.env/
+.venv/
+
+### -----------------------------
+###  FIGURE & REPORT OUTPUTS
+### -----------------------------
+# (Keep these ignored unless explicitly needed in repo)
+*.png
+*.jpg
+*.jpeg
+*.pdf
+*.svg
+*.eps
+
+report-drafts/
+figures/
+plots/
+
+### -----------------------------
+###  MISC PROJECT FILES
+### -----------------------------
+.DS_Store
+Thumbs.db
+
+# External hard-drive or network paths
+*.tmp
+*.bak
