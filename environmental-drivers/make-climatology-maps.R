@@ -14,7 +14,7 @@ library(stringr) ## For name handling
 nc_path   <- "./data/raw/ches-clim-atlas-vims.nc"
 out_ascii_dir <- "./output-for-ecospace/env-drivers/ches-atlas-climatology"
 
-dir.create(out_dir, showWarnings = FALSE, recursive = TRUE)
+dir.create(out_ascii_dir, showWarnings = FALSE, recursive = TRUE)
 dir.create(out_ascii_dir, showWarnings = FALSE, recursive = TRUE)
 
 
@@ -99,6 +99,7 @@ for (vn in vars_to_stack) {
 }
 
 ## -----------------------------------------------------------------------------
+##
 ## Match env_stacks rasters to Ecospace basemap grid
 
 basemap <- terra::rast("./output-for-ecospace/habitat/base-depth-map-88x56.asc")
@@ -156,6 +157,7 @@ for (vn in vars_to_stack) {
 
 
 ## Write out raster stacks -----------------------------------------------------
+##
 for (vn in vars_to_stack) {
   
   r_stack <- ecospace_stacks[[vn]]
@@ -186,3 +188,19 @@ for (vn in vars_to_stack) {
   }
 }
 
+## Plot downscaled climatology ------------------------------------------------------------
+## Loop over variables and make a 12-panel plot for each
+for (vn in vars_to_stack) {
+  #  vn = "salinity_bottom"; print(vn)
+  r <- ecospace_stacks[[vn]]
+  ## --- Save to PNG ---
+  png_file <- file.path(fig_dir, paste0(vn, "_climatology_downscaled.png"))
+  png(png_file, width = 1800, height = 1200, res = 150)
+  
+  ## Loop through 12 months
+  par(mfrow = c(3, 4), mar = c(2, 2, 3, 4))
+  for (i in 1:nlyr(r)) {
+    plot(r[[i]], main = names(r)[i])
+  }
+}
+dev.off()
