@@ -139,11 +139,6 @@ plot(depth_base)
 
 ## Write ESRI ASCII grid for Ecospace
 writeRaster(
-  depth_base,
-  filename = "./data/derived/base_map.asc",  
-  filetype = "ascii",                       ## ESRI ASCII grid
-  overwrite = TRUE,
+  depth_base, filename = "./data/derived/base-map-88x56.asc", 
+  overwrite = TRUE, NAflag = -9999
 )
-
-
-
