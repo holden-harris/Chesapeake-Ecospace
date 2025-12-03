@@ -4,15 +4,19 @@
 ## Output: ./data/derived/env/<varname>_<depth>.tif (or .rds)
 
 ## Load packages
+rm(list = ls())
 library(ncdf4)   ## For netCDF introspection
 library(terra)   ## For raster stacks / spatial work
 library(dplyr)   ## For convenience
 library(stringr) ## For name handling
 
-## File paths
+## Directories
 nc_path   <- "./data/raw/ches-clim-atlas-vims.nc"
-out_dir   <- "./data/derived/env"
+out_ascii_dir <- "./output-for-ecospace/env-drivers/ches-atlas-climatology"
+
 dir.create(out_dir, showWarnings = FALSE, recursive = TRUE)
+dir.create(out_ascii_dir, showWarnings = FALSE, recursive = TRUE)
+
 
 ## -----------------------------------------------------------------------------
 ## Explore the netCDF structure (variables, dims, metadata)
@@ -73,8 +77,7 @@ for (vn in vars_to_stack) {
   env_stacks[[vn]] <- r
 }
 
-## Plot climatology --------------------------------------------------------
-
+## Plot climatology ------------------------------------------------------------
 ## Directory for figures
 fig_dir <- "./environmental-drivers/env_climatology/figs"
 dir.create(fig_dir, showWarnings = FALSE, recursive = TRUE)
@@ -83,20 +86,103 @@ dir.create(fig_dir, showWarnings = FALSE, recursive = TRUE)
 for (vn in vars_to_stack) {
 #  vn = "salinity_bottom"; print(vn)
   r <- env_stacks[[vn]]
-  
   ## --- Save to PNG ---
   png_file <- file.path(fig_dir, paste0(vn, "_climatology.png"))
   png(png_file, width = 1800, height = 1200, res = 150)
   
-  par(mfrow = c(3, 4), mar = c(2, 2, 3, 4))
-  
   ## Loop through 12 months
+  par(mfrow = c(3, 4), mar = c(2, 2, 3, 4))
   for (i in 1:nlyr(r)) {
     plot(r[[i]], main = names(r)[i])
   }
-  
   dev.off()
 }
 
+## -----------------------------------------------------------------------------
+## Match env_stacks rasters to Ecospace basemap grid
 
+basemap <- terra::rast("./output-for-ecospace/habitat/base-depth-map-88x56.asc")
+plot(basemap, main = "Ecospace basemap (depth)", colNA = 'gray')
+
+## Check CRS (just to know what we're working with)
+terra::crs(basemap)
+terra::ext(basemap)
+terra::res(basemap)
+
+ecospace_stacks <- list()
+
+## Loop through environmental variables ----------------------------------------
+for (vn in vars_to_stack) {
+
+  message("Aligning Ecospace: ", vn)
+  r_orig <- env_stacks[[vn]]
+  
+  ## Keep original names & time
+  lyr_names <- names(r_orig)
+  lyr_time  <- time(r_orig)
+  
+  ## Project if CRS differs
+  if (crs(basemap) != crs(r_orig)) {
+    message("  - Projecting from ", terra::crs(r_orig), " to ", terra::crs(basemap))
+    r_new <- terra::project(r_orig, basemap)   ## bilinear by default for continuous vars
+  } else {
+    message(" - CRS is the same")
+    r_new <- r_orig
+  }
+  
+  ## Crop to match extent
+  r_new <- terra::crop(r_new, r_orig)
+  
+  ## Resample to basemap resolution/extent
+  message("  - Resampling to basemap grid (", ncol(basemap), "x", nrow(basemap), ")")
+  r_new <- terra::resample(r_new, basemap, method = "bilinear")
+  
+  ## Optional: mask to basemap non-NA (e.g. ocean only)
+  message("  - Masking to basemap")
+  r_new <- terra::mask(r_new, basemap)
+  
+  ## Restore names & time (usually preserved, but be explicit)
+  names(r_new) <- lyr_names
+  if (!all(is.na(lyr_time))) {
+    time(r_new) <- lyr_time
+  }
+
+  ## Update 
+  ecospace_stacks[[vn]] <- r_new
+  
+  ## Plot check 
+  plot(r_new[[1]], main = paste0(vn, " – ", names(r_new)[1], " (Ecospace grid)"))
+}
+
+
+## Write out raster stacks -----------------------------------------------------
+for (vn in vars_to_stack) {
+  
+  r_stack <- ecospace_stacks[[vn]]
+  message("Writing ASCII files for variable: ", vn)
+  
+  ## Create subfolder for this variable
+  vn_dir <- file.path(out_ascii_dir, vn)
+  dir.create(vn_dir, showWarnings = FALSE, recursive = TRUE)
+  
+  ## Loop through months (layers)
+  for (i in 1:nlyr(r_stack)) {
+    month_name <- names(r_stack)[i]   ## "Jan", "Feb", etc.
+    
+    ## File name inside this variable’s folder
+    asc_file <- file.path(
+      vn_dir,
+      paste0(vn, "_", month_name, ".asc")
+    )
+    
+    message("  - ", asc_file)
+    
+    terra::writeRaster(
+      r_stack[[i]],
+      filename = asc_file,
+      NAflag   = -9999,
+      overwrite = TRUE
+    )
+  }
+}
 
