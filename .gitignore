@@ -1,7 +1,6 @@
 ### -----------------------------
 ###  PROJECT-WIDE IGNORE RULES
 
-
 .Rproj.user
 .Rhistory
 .RData
@@ -39,15 +38,10 @@ environmental-drivers/ches-bay-atlas/
 
 ## Raster data / grids
 *.grd
-*.asc
 *.bil
 *.bip
 *.bsq
 
-
-## Large tables from IMPLAN or stakeholder scoring
-*_IMPLAN_*.csv
-*_scores_*.csv
 
 ## EwE-specific temporary files (if using GUI or batch runs)
 *.eii
@@ -72,7 +66,6 @@ __pycache__/
 
 ### -----------------------------
 ###  DEVELOPMENT ENVIRONMENTS
-### -----------------------------
 
 # RStudio
 .Rproj.user/
@@ -89,18 +82,6 @@ venv/
 
 ### -----------------------------
 ###  FIGURE & REPORT OUTPUTS
-### -----------------------------
-# (Keep these ignored unless explicitly needed in repo)
-*.png
-*.jpg
-*.jpeg
-*.pdf
-*.svg
-*.eps
-
-report-drafts/
-figures/
-plots/
 
 ### -----------------------------
 ###  MISC PROJECT FILES
