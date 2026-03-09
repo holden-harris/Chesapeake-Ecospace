@@ -147,3 +147,4 @@ for (i in 1:nrow(var_pref)){
                  range = 'nar',
                  driver = "Sal")
 }
+par(mfrow=c(1, 1))
