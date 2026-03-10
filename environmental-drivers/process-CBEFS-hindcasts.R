@@ -164,32 +164,96 @@ candidate_subds <- subds_tbl %>%
 
 print(candidate_subds, n = Inf)
 
+
 ## -----------------------------------------------------------------------------
-## Define the target variable/subdataset to process
-## Fill these in manually after you inspect the file
+## Build depth-specific stacks for each variable from one file
 
-i <- 1
+variables <- c("temperature", "salinity", "diss_o2", "phytoplankton", "NO3")
 
-target_subds <- tibble(
-  out_prefix = c("salinity_surface"),
-  subds_id   = c(1)
-)
+## Store outputs here
+env_stacks <- list()
 
-print(target_subds)
-
-out_prefix <- target_subds$out_prefix[i]
-subds_id   <- as.integer(target_subds$subds_id[i])
-
-cat("\nSelected out_prefix:", out_prefix, "\n")
-cat("Selected subds_id:", subds_id, "\n")
-
-if (is.na(subds_id)) {
-  stop("subds_id is NA. Check target_subds.")
+for (v in variables) {
+  
+  cat("\n====================================================\n")
+  cat("Reading variable:", v, "\n")
+  cat("File:", basename(test_file_1), "\n")
+  
+  ## Read variable
+  rr1 <- rast(test_file_1, subds = v)
+  
+  ## Flip vertically to match geographic orientation
+  rr1 <- flip(rr1, direction = "vertical")
+  
+  ## Quick check
+  print(rr1)
+  cat("nlyr =", nlyr(rr1), "\n")
+  
+  ## Split into three depth-specific stacks
+  bott <- rr1[[seq(1, nlyr(rr1), by = 3)]]
+  surf <- rr1[[seq(2, nlyr(rr1), by = 3)]]
+  davg <- rr1[[seq(3, nlyr(rr1), by = 3)]]
+  
+  ## Rename layers for clarity
+  names(bott) <- paste0(v, "_bott_", seq_len(nlyr(bott)))
+  names(surf) <- paste0(v, "_surf_", seq_len(nlyr(surf)))
+  names(davg) <- paste0(v, "_davg_", seq_len(nlyr(davg)))
+  
+  ## Store in list
+  env_stacks[[paste0(v, "_bott")]] <- bott
+  env_stacks[[paste0(v, "_surf")]] <- surf
+  env_stacks[[paste0(v, "_davg")]] <- davg
+  
+  ## Optional: also create standalone objects in workspace
+  assign(paste0(v, "_bott"), bott)
+  assign(paste0(v, "_surf"), surf)
+  assign(paste0(v, "_davg"), davg)
 }
 
-if (is.na(out_prefix) || out_prefix == "") {
-  stop("out_prefix is blank. Check target_subds.")
-}
+## -----------------------------------------------------------------------------
+## Check output names
+
+names(env_stacks)
+
+## Example checks
+print(env_stacks[["temperature_bott"]])
+print(env_stacks[["salinity_surf"]])
+print(env_stacks[["diss_o2_davg"]])
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 ## -----------------------------------------------------------------------------
 ## Read the first file only
