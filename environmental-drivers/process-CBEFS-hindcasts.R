@@ -192,15 +192,12 @@ if (is.na(out_prefix) || out_prefix == "") {
 }
 
 ## -----------------------------------------------------------------------------
-## Step 1. Read the first file only
-
-#var <- c("longitude", "latitude", "bathymetry", "mask_land_sea", "temperature", 
-#         "salinity", "dissolved oxygen", "phytoplankton", "nitrate")
+## Read the first file only
 
 variables <- candidate_subds$varname
 print(variables)
 
-subs_id <- variables[2] ## salinity
+subs_id <- variables[3] ## salinity
 test_file_1 <- file_tbl$file[1]
 test_year_1 <- file_tbl$year[1]
 
@@ -227,30 +224,26 @@ rr1 <- rast(test_file_1, subds = subs_id)
 ## Raster plotting systems (including terra, raster, GDAL, etc.) assume that row 1 is the top row of the raster.
 rr1 <- flip (rr1, direction = "vertical") 
 
+## Check file
 print(rr1); print(varnames(rr1)); print(longnames(rr1))
 cat("nlyr =", nlyr(rr1), "\n"); cat("nrow =", nrow(rr1), " ncol =", ncol(rr1), "\n")
-print(ext(rr1)); print(crs(rr1))
 
 
+## Split into three depth-specific stacks --------------------------------------
+bott  <- rr1[[seq(1, nlyr(rr1), by = 3)]]  ## Bottom
+surf  <- rr1[[seq(2, nlyr(rr1), by = 3)]]  ## Surface
+davg  <- rr1[[seq(3, nlyr(rr1), by = 3)]]  ## Depth-average
 
+print(bott)
+print(surf)
+print(davg)
 
-## Split into three depth-specific stacks
-bottom   <- rr1[[seq(1, nlyr(rr1), by = 3)]]
-surface  <- rr1[[seq(2, nlyr(rr1), by = 3)]]
-depthavg <- rr1[[seq(3, nlyr(rr1), by = 3)]]
-
-print(bottom)
-print(surface)
-print(depthavg)
-
-
-
-
-
-
-
-
-
+max <- max(terra::minmax(rr1))
+par(mfrow=c(1,3))
+plot(bott[[1]], range = c(0,max), main = "Bottom (Jan 1)")
+plot(surf[[1]], range = c(0,max), main = "Surface (Jan 1)")
+plot(davg[[1]], range = c(0,max), main = "Average (Jan 1)")
+par(mfrow=c(1,3))
 
 
 
@@ -260,8 +253,25 @@ print(depthavg)
 
 
 
-## Optional: inspect one layer
-plot(sal_bottom[[1]])
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 ## -----------------------------------------------------------------------------
 ## Step 2. Check expected number of daily layers in first year
@@ -446,6 +456,16 @@ writeCDF(
   overwrite = TRUE,
   compression = 4
 )
+
+
+
+
+
+
+
+
+
+
 
 
 
