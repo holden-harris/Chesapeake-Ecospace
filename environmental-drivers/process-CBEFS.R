@@ -179,9 +179,50 @@ cat("  surf:", as.character(time(surf_all)[1]), "to",
 cat("  davg:", as.character(time(davg_all)[1]), "to",
     as.character(time(davg_all)[nlyr(davg_all)]), "\n")
 
-## Optional plot check
+## Plot check
 par(mfrow = c(1, 3))
 plot(bott_all[[1]], main = paste0(v, " bott first layer"))
 plot(surf_all[[1]], main = paste0(v, " surf first layer"))
 plot(davg_all[[1]], main = paste0(v, " davg first layer"))
 par(mfrow = c(1, 1))  
+
+
+## -----------------------------------------------------------------------------
+## Write out TIFF files as netCDF files
+
+dir_in  <- "./output-for-ecospace/env-drivers/CBEFS-hindcast/final"
+dir_out <- "./output-for-ecospace/env-drivers/CBEFS-hindcast/final-nc"
+dir.create(dir_out, showWarnings = FALSE, recursive = TRUE)
+
+files_tif <- list.files(
+  dir_in,
+  pattern = "\\.tif$",
+  full.names = TRUE
+)
+
+for (f in files_tif) {
+  
+  cat("\nConverting:\n", basename(f), "\n")
+  
+  r <- rast(f)
+  
+  out_nc <- file.path(
+    dir_out,
+    paste0(tools::file_path_sans_ext(basename(f)), ".nc")
+  )
+  
+  ## Use the raster name as varname if possible
+  vname <- names(r)[1]
+  vname <- gsub("_[0-9]{8}$", "", vname)
+  
+  writeCDF(
+    r,
+    filename = out_nc,
+    overwrite = TRUE,
+    varname = vname,
+    longname = vname,
+    compression = 4
+  )
+  
+  cat("Wrote:", basename(out_nc), "\n")
+}
