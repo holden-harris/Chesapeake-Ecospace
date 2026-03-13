@@ -135,7 +135,31 @@ par(mfrow=c(1,1))
 
 ## Choose the raster to export
 depth_base <- depth_rast2   ## aggregated (fact = 2) depth in meters
-plot(depth_base)
+
+## -----------------------------------------------------------------------------
+## Write depth map to PNG with legend
+
+png(
+  filename = "./habitat/plots/depth-map.png",
+  width = 6,
+  height = 6,
+  units = "in", 
+  res = 1200,
+  bg = "white"
+)
+
+par(mar = c(4, 4, 2, 5))
+
+plot(
+  depth_base,
+  colNA = "gray75",
+  axes = TRUE,
+  col = hcl.colors(100, "viridis"),
+  plg = list(title = "Depth (m)")
+)
+
+dev.off()
+
 
 ## Write ESRI ASCII grid for Ecospace
 writeRaster(
