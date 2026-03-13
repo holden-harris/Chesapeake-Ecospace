@@ -9,7 +9,9 @@ library(dplyr)
 
 terraOptions(progress = 1, memfrac = 0.7)
 
-## -----------------------------------------------------------------------------
+
+################################################################################
+##
 ## User options
 
 out_format       <- "BOTH"   ## Options: "TIFF", "NC", "BOTH"
@@ -33,6 +35,10 @@ dir.create(out_dir_tif, showWarnings = FALSE, recursive = TRUE)
 dir.create(out_dir_nc,  showWarnings = FALSE, recursive = TRUE)
 
 
+################################################################################
+##
+## Set up processing
+
 ## -----------------------------------------------------------------------------
 ## Determine variables to process
 
@@ -45,13 +51,10 @@ variables_all <- c(
 )
 
 if (length(variables_to_run) == 1 && variables_to_run == "ALL") {
-  
   variables <- variables_all
-  
   cat("\nVariables selected: ALL\n")
   
 } else {
-  
   ## Validate requested variables
   bad_vars <- setdiff(variables_to_run, variables_all)
   
@@ -61,12 +64,13 @@ if (length(variables_to_run) == 1 && variables_to_run == "ALL") {
       paste(bad_vars, collapse = ", ")
     )
   }
-  
   variables <- variables_to_run
-  
   cat("\nVariables selected:\n")
   print(variables)
 }
+
+## -----------------------------------------------------------------------------
+## Set up writing TIFF or NC or BOTH
 
 ## Use TIFF yearly chunks for TIFF and BOTH
 ## Use NC yearly chunks only when final output is NC only
@@ -81,7 +85,7 @@ if (out_format %in% c("TIFF", "BOTH")) {
 }
 
 ## -----------------------------------------------------------------------------
-## File table
+## Make file table
 
 nc_files <- list.files(
   path = nc_path,
@@ -176,10 +180,17 @@ write_final_stack <- function(r, filename, format_out, varname_out, longname_out
   }
 }
 
-## -----------------------------------------------------------------------------
+
+################################################################################
+##
+## Processing loop
+##
 ## Process one variable at a time
 ## outer loop = variable
 ## inner loop = file/year
+
+## -----------------------------------------------------------------------------
+## Outer loop - variable
 
 for (v in variables) {
   
@@ -196,6 +207,7 @@ for (v in variables) {
   davg_files <- character(n_years)
   
   ## ---------------------------------------------------------------------------
+  ## Inner loop - read each year file
   ## Process each year and write yearly chunks
   
   for (i in seq_len(n_years)) {
