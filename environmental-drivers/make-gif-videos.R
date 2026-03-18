@@ -71,31 +71,31 @@ hcl.pals() ## Plotting color options
 
 file_settings <- data.frame(
   file_name  = c(
-    "salinity_bott_1985_2024.nc",
+#    "salinity_bott_1985_2024.nc",
     "temperature_davg_1985_2024.nc",
     "NO3_surf_1985_2024.nc",
     "diss_o2_bott_1985_2024.nc"
   ),
   plot_label = c(
-    "Bottom salinity",
+#    "Bottom salinity",
     "Avg temperature",
     "Surface nitrate",
     "Bottom DO"
   ),
   units      = c(
-    "PPT",
+#    "PPT",
     "degC",
     "mmol N/m³",
     "mg O₂ L⁻¹"
   ),
   palette    = c(
-    "viridis",
+#    "viridis",
     "Heat",
-    "TealGrn",
+    "Purples",
     "YlGnBu"
   ),
   reverse_palette = c(
-    FALSE,  ## salinity
+#    FALSE,  ## salinity
     TRUE,  ## temperature
     FALSE,  ## nitrate
     FALSE   ## DO
@@ -381,7 +381,7 @@ for (j in seq_len(nrow(file_settings))) {
   
   gif_file <- file.path(
     var_dir_out,
-    paste0(file_stub, "_monthly_", period_tag, ".gif")
+    paste0(file_stub, "_xM_", period_tag, ".gif")
   )
   
   cat("\n------------------------------------------------------------\n")
@@ -473,7 +473,7 @@ for (j in seq_len(nrow(file_settings))) {
   
   cat("\nMonthly value range used for plotting:\n")
   print(zlim)
-#  zlim = c(0,80)
+  zlim = c(0,80)
   
   ## ---------------------------------------------------------------------------
   ## Get plotting colors robustly
