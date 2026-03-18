@@ -31,12 +31,11 @@ start_year <- 2021
 num_years  <- 4
 
 gif_delay  <- 0.25
-gif_width  <- 1400
-gif_height <- 900
+gif_width  <- 900
+gif_height <- 1400
 gif_res    <- 150
 
-n_cols          <- 100
-reverse_palette <- TRUE
+n_cols     <- 100
 
 overwrite_monthly <- FALSE
 overwrite_gif     <- TRUE
@@ -68,6 +67,8 @@ print(available_files)
 ## -----------------------------------------------------------------------------
 ## User-controlled file settings
 
+hcl.pals() ## Plotting color options
+
 file_settings <- data.frame(
   file_name  = c(
     "salinity_bott_1985_2024.nc",
@@ -89,9 +90,15 @@ file_settings <- data.frame(
   ),
   palette    = c(
     "viridis",
-    "turbo",
+    "Heat",
     "TealGrn",
     "YlGnBu"
+  ),
+  reverse_palette = c(
+    FALSE,  ## salinity
+    TRUE,  ## temperature
+    FALSE,  ## nitrate
+    FALSE   ## DO
   ),
   stringsAsFactors = FALSE
 )
@@ -442,7 +449,7 @@ for (j in seq_len(nrow(file_settings))) {
   x_month <- setMinMax(x_month)
   
   mm <- minmax(x_month)
-  zlim <- range(mm, na.rm = TRUE)
+  zlim <- round(range(mm, na.rm = TRUE))
   
   ## If minmax metadata still fail, compute directly from raster values
   if(any(!is.finite(zlim))) {
@@ -466,6 +473,7 @@ for (j in seq_len(nrow(file_settings))) {
   
   cat("\nMonthly value range used for plotting:\n")
   print(zlim)
+#  zlim = c(0,80)
   
   ## ---------------------------------------------------------------------------
   ## Get plotting colors robustly
@@ -479,9 +487,10 @@ for (j in seq_len(nrow(file_settings))) {
   ## ---------------------------------------------------------------------------
   ## Optional quick plot check of first layer
   
+  windows()
   plot(
     x_month[[1]],
-    main  = paste0(plot_label, ": ", names(x_month)[1]),
+    main  = paste0(plot_label, ": ", gsub("^X", "", names(x_month)[1])),
     col   = plot_cols,
     range = zlim,
     plg   = list(title = units_lab),
@@ -509,7 +518,7 @@ for (j in seq_len(nrow(file_settings))) {
     
     plot(
       layer_i,
-      main  = paste0(plot_label, ": ", layer_name),
+      main  = paste0(plot_label, ": ", gsub("^X", "", names(x_month)[i])),
       col   = plot_cols,
       range = zlim,
       plg   = list(title = units_lab),
