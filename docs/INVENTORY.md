@@ -147,10 +147,80 @@ All final Ecospace inputs live in `output-for-ecospace/`:
 
 | Issue | Location | Priority |
 |-------|----------|----------|
-| `process-CBEFS-hindcasts.R` duplicates ~80% of `process-CBEFS.R` logic; has commented-out loops and references an undefined `test_file_1` variable | `environmental-drivers/` | Archive or delete |
-| `query-aquamaps-data.R` references undefined `fg` variable and writes to `./global-data/` path that does not exist | `preference-functions/` | Needs rework before re-running |
-| `make-gif-videos.R` has `zlim = c(0,80)` hardcoded override and a `windows()` call that fails on non-Windows or headless runs | `environmental-drivers/` | Minor — clean up before sharing |
-| GIF/PNG files in `environmental-drivers/GIFs/` were staged in git (large binary media ~500 MB); should be gitignored | `.gitignore` | High — add before next commit |
-| `dispersal-rates/` is an empty placeholder directory | repo root | Low — delete when not needed |
-| `env-pref-parameters.csv` was compiled manually; the automated AquaMaps query (`query-aquamaps-data.R`) needs repair to re-derive it programmatically | `preference-functions/` | Medium |
-| Preference functions only implemented for salinity; temperature, dissolved oxygen, depth, and NO₃ are not yet generated | `Make-preference-functions.R` | Medium |
+| `query-aquamaps-data.R` references undefined `fg` variable and writes to `./global-data/` path that does not exist — needs repair before re-running AquaMaps HSPEN queries | `preference-functions/` | High |
+| CBEFS hindcast stacks are not yet reprojected to the basemap grid — CRS is intentionally ignored in current scripts but must be resolved before Ecospace ingestion | `environmental-drivers/` | High |
+| Preference functions only implemented for salinity; temperature, dissolved oxygen, depth, and NO₃ curves not yet generated | `Make-preference-functions.R` | Medium |
+| `dispersal-rates/` is an empty placeholder directory | repo root | Low |
+| Git history contains ~500 MB of previously committed GIF/PNG media; files are now untracked but history not cleaned — use BFG Repo-Cleaner or `git filter-branch` if repo size is a concern | git | Low |
+
+---
+
+## 7. Outstanding Work / Development Roadmap
+
+Items needed before the Ecospace model can run, listed in approximate priority order.
+
+### 7a. Commit staged changes
+
+All changes from the documentation and cleanup session are staged but not yet committed. Run:
+
+```r
+git commit -m "Add documentation, clean up code, remove GIF tracking"
+```
+
+### 7b. Resolve CBEFS CRS and alignment
+
+CBEFS hindcast data is on an oblique stereographic projection (+proj=stere +lon_0=283.54 +lat_0=37.75), 336×564 grid, ~600 m resolution. All current CBEFS scripts deliberately skip CRS handling. Before `output-for-ecospace/env-drivers/` products can be used in Ecospace, they must be reprojected and resampled to the 88×56 basemap. This likely requires adding a reprojection step inside `process-CBEFS.R` or a new post-processing script.
+
+### 7c. Build missing static habitat layer scripts
+
+Five habitat layers are needed for Ecospace but have no scripts:
+
+| Layer | Suggested script | Notes |
+|-------|-----------------|-------|
+| SAV | `habitat/make-sav-layer.R` | VIMS annual SAV survey data |
+| Soft-bottom substrate | `habitat/make-substrate-layers.R` | NOAA/state benthic survey |
+| Hard-bottom / structured habitat | same script | |
+| Oyster / bivalve reef | `habitat/make-oyster-layer.R` | MD/VA oyster reef GIS |
+| Marsh / emergent vegetation | `habitat/make-marsh-layer.R` | NOAA C-CAP or NWI |
+
+Each script should follow the existing pattern: read source → resample to basemap (`resample(x, basemap, method = "max")`) → write `.asc` to `output-for-ecospace/` + PNG to `habitat/plots/`.
+
+### 7d. Extend preference functions to remaining variables
+
+`Make-preference-functions.R` currently only generates salinity curves. Extend to:
+- Temperature (`driver = "Temp"`, `max = 40`)
+- Dissolved oxygen (`driver = "DO"`)
+- Depth (`driver = "Depth"`, `max = 400`, `range = "wide"`)
+- NO₃ / nutrient (`driver = "NO3"`)
+
+Parameters for each variable need entries in `data/derived/env-pref-parameters.csv`.
+
+### 7e. Repair `query-aquamaps-data.R`
+
+The AquaMaps HSPEN query script has two bugs:
+1. References `fg` (should be `sp_list`)
+2. Writes to `./global-data/` (should be `./data/derived/`)
+
+Fix these and re-run to programmatically regenerate `env-pref-parameters.csv` entries.
+
+### 7f. Expand species and FG lists for lower trophic groups
+
+`data/raw/species-list.csv` only covers fish/crustacean groups. Add representative entries (or placeholders) for:
+- Bivalves
+- Benthic Invertebrates
+- Zooplankton
+
+SAV, Phytoplankton, and Detritus do not need FishBase queries but should appear in `env-pref-parameters.csv` as FG rows.
+
+### 7g. Add life-stage splits to species-list.csv
+
+The target Ecospace model uses stage-specific FGs (e.g., Blue Catfish 0–1 yr, 1-harvest, trophy; three striped bass stages; two sturgeon stages; three blue crab stages). The current `species-list.csv` does not distinguish stages. `env-pref-parameters.csv` already has stage-specific rows for Blue Catfish — the same treatment is needed for Striped Bass, Sturgeon, and Blue Crab.
+
+### 7h. QA output bundle for every spatial product
+
+For each final `.asc` file, generate a small QA record:
+- PNG map saved to `habitat/plots/` or `environmental-drivers/env_climatology/figs/`
+- `compareGeom()` check against basemap
+- Summary of min, max, NA count, and dimensions
+
+This is already partially done for the basemap and jurisdiction layers.

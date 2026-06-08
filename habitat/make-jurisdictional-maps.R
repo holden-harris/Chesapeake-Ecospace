@@ -1,6 +1,6 @@
 library(terra)
 
-pot_buffer_m <- 7200   ## start small: 2000 m = 2 km
+pot_buffer_m <- 7200   ## 7.2 km buffer; reduce (e.g. to 2000 m) if Potomac encroachment is minor
 
 fig_dir <- "./habitat/plots/"
 asc_dir <- "./output-for-ecospace/jurisdictions/ascii"
