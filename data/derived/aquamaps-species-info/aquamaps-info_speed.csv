@@ -1,5 +1,0 @@
-"Species","SpecCode","autoctr","StockCode","SpeedRefNo","Length","LengthType","SpeedLS","LengthTypeSpeed","Speedms","Mode","DataRef","Reliable","Comment","Entered","DateEntered","Modified","DateModified","Expert","DateChecked","SLa","SLb","TS"
-"Alosa pseudoharengus",1583,227,1776,308,28,"SL",16.9,"SL",4.732,"burst",46356,NA,"Lengths were transformed to SL in Ref. 308.",1,1992-01-30,3,2003-03-28,NA,NA,NA,NA,NA
-"Brevoortia tyrannus",1592,228,1785,308,25,"SL",0.51,"SL",0.1275,"sustained",NA,NA,"Lengths were transformed to SL in Ref. 308.",1,1992-01-30,1,2000-09-20,NA,NA,NA,NA,NA
-"Leiostomus xanthurus",429,198,443,308,5,"SL",14,"SL",0.7,"burst",46359,NA,"Lengths were transformed to SL in Ref. 308.",1,1992-01-30,3,2003-03-28,NA,NA,NA,NA,NA
-"Morone saxatilis",353,186,367,308,22,"SL",1.88,"SL",0.4136,"sustained",686,NA,"Lengths were transformed to SL in Ref. 308.",1,1992-01-30,1,2000-09-20,NA,NA,NA,NA,NA

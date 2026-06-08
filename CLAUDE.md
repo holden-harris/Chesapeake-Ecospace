@@ -16,17 +16,17 @@ All scripts are standalone (no `source()` dependencies). Run in this order:
 
 | Step | Script | Key user flags |
 |------|--------|----------------|
-| 1 | `habitat/make-baythymetry-basemap.R` | None — downloads live from NOAA |
-| 2 | `habitat/make-jurisdictional-maps.R` | `pot_buffer_m` (default 7200 m) |
-| 3 | `environmental-drivers/make-climatology-maps.R` | None |
-| 4 | `environmental-drivers/process-CBEFS.R` | `run_mode <- "TEST"\|"FULL"`, `out_format <- "NC"\|"TIFF"\|"BOTH"`, `verbose_mode <- FALSE\|TRUE` |
-| 5 | `environmental-drivers/aggregate-daily-stacks-to-monthly.R` | `overwrite_monthly`, `start_year`/`end_year` |
-| 6 | `preference-functions/query-env-preference-parameters.R` | None — requires internet (FishBase API) |
-| 7 | `preference-functions/Make-preference-functions.R` | None |
+| 1 | `make-habitat-maps/make-baythymetry-basemap.R` | None — downloads live from NOAA |
+| 2 | `make-habitat-maps/make-jurisdictional-maps.R` | `pot_buffer_m` (default 7200 m) |
+| 3 | `make-environmental-drivers/make-climatology-maps.R` | None |
+| 4 | `make-environmental-drivers/process-CBEFS.R` | `run_mode <- "TEST"\|"FULL"`, `out_format <- "NC"\|"TIFF"\|"BOTH"`, `verbose_mode <- FALSE\|TRUE` |
+| 5 | `make-environmental-drivers/aggregate-daily-stacks-to-monthly.R` | `overwrite_monthly`, `start_year`/`end_year` |
+| 6 | `make-preference-functions/query-aquamaps-data.R` | None — requires internet (FishBase API) |
+| 7 | `make-preference-functions/Make-preference-functions.R` | None |
 
 Optional visualization:
-- `environmental-drivers/make-gif-videos.R` — configure `file_settings` table and `start_year`/`num_years`
-- `environmental-drivers/make-monthly-maps.R` — single-variable QC pipeline (bottom salinity)
+- `make-environmental-drivers/make-gif-videos.R` — configure `file_settings` table and `start_year`/`num_years`
+- `make-environmental-drivers/make-monthly-maps.R` — single-variable QC pipeline (bottom salinity)
 
 ---
 
@@ -80,9 +80,9 @@ Example: `temperature_bott_1985_2024.nc`
 | File | Why |
 |------|-----|
 | `output-for-ecospace/habitat/base-depth-map-88x56.asc` | The Ecospace basemap — all raster work reprojects to this grid |
-| `data/raw/species-list.csv` | Master species-level FG list used by preference-function scripts |
-| `data/derived/env-pref-parameters.csv` | Manually curated preference parameters (AquaMaps HSPEN Dec 2025 + literature) |
-| `data/raw/CBEFS-hindcast/*.nc` | 40 raw hindcast files, ~43 GB total — gitignored, do not move |
+| `data-inputs/species-info/species-list.csv` | Master species-level FG list used by preference-function scripts |
+| `data-inputs/env-preference-functions/env-pref-parameters.csv` | Manually curated preference parameters (AquaMaps HSPEN Dec 2025 + literature) |
+| `data-inputs/spatial-dynamic/CBEFS-hindcast/*.nc` | 40 raw hindcast files, ~43 GB total — gitignored, do not move |
 
 ---
 
@@ -121,9 +121,9 @@ Each will need to: read source data → resample to basemap → write `.asc` + P
 
 ## Large Data Files (Not in Git)
 
-- `data/raw/CBEFS-hindcast/*.nc` — 40 files, ~1.1 GB each → gitignored via `*.nc`
-- `data/raw/ches-clim-atlas-vims.nc` — Bay Atlas climatology → gitignored via `*.nc`
-- `environmental-drivers/GIFs/` — generated animations → gitignored
+- `data-inputs/spatial-dynamic/CBEFS-hindcast/*.nc` — 40 files, ~1.1 GB each → gitignored via `*.nc`
+- `data-inputs/spatial-dynamic/CBEFS-climatology/ches-clim-atlas-vims.nc` — Bay Atlas climatology → gitignored via `*.nc`
+- `make-environmental-drivers/GIFs/` — generated animations → gitignored
 
 ---
 

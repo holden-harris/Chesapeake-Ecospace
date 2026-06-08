@@ -7,7 +7,7 @@
 .Ruserdata
 
 ## Folders
-environmental-drivers/ches-bay-atlas/
+make-environmental-drivers/ches-bay-atlas/
 hoard/
 
 ## NetCDF (ROMS-ECB, CMIP6, downscaled drivers)
@@ -87,7 +87,7 @@ venv/
 
 ## GIF animations and PNG frame sequences (large media, regenerable from scripts)
 *.gif
-environmental-drivers/GIFs/
+make-environmental-drivers/GIFs/
 
 ## Monthly TIFF aggregates written by make-gif-videos.R (regenerable)
 ## Note: var-stack-TIFF and var-stack-NC outputs are also large; NC outputs are

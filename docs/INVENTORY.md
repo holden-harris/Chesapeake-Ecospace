@@ -17,45 +17,46 @@ This repository builds all spatial and environmental inputs required to run a Ch
 
 | Directory | Contents |
 |-----------|----------|
-| `data/raw/` | Raw input data: CBEFS hindcast NetCDF files (~43 GB, gitignored), jurisdiction rasters, master species list |
-| `data/derived/` | Processed species trait data from FishBase API queries; manually compiled environmental preference parameter table |
-| `environmental-drivers/` | R scripts for processing CBEFS hindcasts and Bay Atlas climatology; GIF animation outputs (gitignored) |
-| `habitat/` | R scripts for creating the depth basemap and jurisdiction maps; PNG plot outputs |
-| `preference-functions/` | R scripts for querying FishBase / AquaMaps APIs and generating logistic preference curves |
+| `data-inputs/spatial-static/` | Static spatial inputs: jurisdiction rasters |
+| `data-inputs/spatial-dynamic/` | Time-varying spatial inputs: CBEFS hindcast NetCDF files (~43 GB, gitignored) and Bay Atlas climatology NetCDF |
+| `data-inputs/species-info/` | Species list CSV; FishBase API query outputs (`aquamaps-species-info/`) |
+| `data-inputs/env-preference-functions/` | Manually compiled environmental preference parameter table (`env-pref-parameters.csv`) |
+| `make-environmental-drivers/` | R scripts for processing CBEFS hindcasts and Bay Atlas climatology; GIF animation outputs (gitignored) |
+| `make-habitat-maps/` | R scripts for creating the depth basemap and jurisdiction maps; PNG plot outputs |
+| `make-preference-functions/` | R scripts for querying FishBase / AquaMaps APIs and generating logistic preference curves |
 | `misc-code/` | Stand-alone example visualization scripts (not part of the main pipeline) |
 | `output-for-ecospace/` | **Final outputs** — all files consumed directly by Ecospace (ASC grids, NetCDF stacks, preference CSVs) |
 | `terra-temp/` | Scratch space for terra raster processing (gitignored, auto-created) |
-| `dispersal-rates/` | Empty placeholder — dispersal rate workflow not yet started |
+| `hoard/` | Archived / reference files (gitignored) |
 
 ---
 
 ## 3. R Script Inventory
 
-### habitat/
+### make-habitat-maps/
 
 | Script | Purpose | Reads | Writes | Pipeline step |
 |--------|---------|-------|--------|---------------|
-| `make-baythymetry-basemap.R` | Downloads NOAA bathymetry; tests 4 resolutions; exports the 88×56 depth grid used by all other scripts | NOAA online API (`marmap::getNOAA.bathy`) | `output-for-ecospace/habitat/base-depth-map-88x56.asc`; `habitat/plots/depth-map.png` | **Step 1 — run once** |
-| `make-jurisdictional-maps.R` | Creates binary (0/1) jurisdiction rasters (MD, VA, Potomac) aligned to the basemap; buffers Potomac by 7.2 km | `data/raw/jurisdictions/jurisraster.tif`; basemap ASC | `output-for-ecospace/jurisdictions/ascii/jurisdiction_{maryland,virginia,potomac}.asc`; `habitat/plots/chesapeake_bay_jurisdictions.png` | **Step 2 — run once** (requires basemap) |
+| `make-baythymetry-basemap.R` | Downloads NOAA bathymetry; tests 4 resolutions; exports the 88×56 depth grid used by all other scripts | NOAA online API (`marmap::getNOAA.bathy`) | `output-for-ecospace/habitat/base-depth-map-88x56.asc`; `make-habitat-maps/plots/depth-map.png` | **Step 1 — run once** |
+| `make-jurisdictional-maps.R` | Creates binary (0/1) jurisdiction rasters (MD, VA, Potomac) aligned to the basemap; buffers Potomac by 7.2 km | `data-inputs/spatial-static/jurisdictions/jurisraster.tif`; basemap ASC | `output-for-ecospace/jurisdictions/ascii/jurisdiction_{maryland,virginia,potomac}.asc`; `make-habitat-maps/plots/chesapeake_bay_jurisdictions.png` | **Step 2 — run once** (requires basemap) |
 
-### environmental-drivers/
+### make-environmental-drivers/
 
 | Script | Purpose | Reads | Writes | Pipeline step |
 |--------|---------|-------|--------|---------------|
-| `make-climatology-maps.R` | Reads Bay Atlas climatology NetCDF; builds 12-month stacks for 5 variables; reprojects to basemap; writes monthly ASC files | `data/raw/ches-clim-atlas-vims.nc` (gitignored); basemap ASC | `output-for-ecospace/env-drivers/ches-atlas-climatology/<var>/<var>_<Mon>.asc` (60 files); PNG 12-panel figures | **Step 3 — run once** |
-| `process-CBEFS.R` | **Primary CBEFS processor.** Reads 40 yearly CBEFS NetCDF files; splits each variable into 3 depth bands (`_bott`, `_surf`, `_davg`); combines into multi-year stacks. User controls: `out_format` (TIFF/NC/BOTH), `run_mode` (TEST/FULL), `variables_to_run` | `data/raw/CBEFS-hindcast/holdenharris_YYYY_v*.nc` (40 files) | `output-for-ecospace/env-drivers/CBEFS-hindcast/var-stack-NC/<var>_<depth>_1985_2024.nc` (15 files); same in `var-stack-TIFF/` if TIFF format selected | **Step 4 — long-running** (~hours in FULL mode) |
+| `make-climatology-maps.R` | Reads Bay Atlas climatology NetCDF; builds 12-month stacks for 5 variables; reprojects to basemap; writes monthly ASC files | `data-inputs/spatial-dynamic/CBEFS-climatology/ches-clim-atlas-vims.nc` (gitignored); basemap ASC | `output-for-ecospace/env-drivers/ches-atlas-climatology/<var>/<var>_<Mon>.asc` (60 files); PNG 12-panel figures | **Step 3 — run once** |
+| `process-CBEFS.R` | **Primary CBEFS processor.** Reads 40 yearly CBEFS NetCDF files; splits each variable into 3 depth bands (`_bott`, `_surf`, `_davg`); combines into multi-year stacks. User controls: `out_format` (TIFF/NC/BOTH), `run_mode` (TEST/FULL), `variables_to_run` | `data-inputs/spatial-dynamic/CBEFS-hindcast/holdenharris_YYYY_v*.nc` (40 files) | `output-for-ecospace/env-drivers/CBEFS-hindcast/var-stack-NC/<var>_<depth>_1985_2024.nc` (15 files); same in `var-stack-TIFF/` if TIFF format selected | **Step 4 — long-running** (~hours in FULL mode) |
 | `aggregate-daily-stacks-to-monthly.R` | Aggregates daily NC stacks from Step 4 to monthly means using `tapp()`; writes one monthly NC per input file; logs processing metadata to CSV | `output-for-ecospace/env-drivers/CBEFS-hindcast/var-stack-NC/*.nc` | `output-for-ecospace/env-drivers/CBEFS-hindcast/var-stack-NC-monthly/<var>_<depth>_..._monthly_mean.nc`; timestamped CSV log | **Step 5** (requires Step 4 NC output) |
-| `make-gif-videos.R` | Aggregates selected daily stacks to monthly TIFFs; renders GIF animations with configurable color palettes and year range. User controls: `start_year`, `num_years`, `file_settings` table, `overwrite_*` flags | `output-for-ecospace/env-drivers/CBEFS-hindcast/var-stack-NC/*.nc` | `environmental-drivers/GIFs/<var_stub>/<var>_monthly_mean_<yr>_<yr>.tif`; `<var>_xM_<yr>_<yr>.gif` + frame PNGs (not tracked in git) | **Visualization only** — optional |
+| `make-gif-videos.R` | Aggregates selected daily stacks to monthly TIFFs; renders GIF animations with configurable color palettes and year range. User controls: `start_year`, `num_years`, `file_settings` table, `overwrite_*` flags | `output-for-ecospace/env-drivers/CBEFS-hindcast/var-stack-NC/*.nc` | `make-environmental-drivers/GIFs/<var_stub>/<var>_monthly_mean_<yr>_<yr>.tif`; `<var>_xM_<yr>_<yr>.gif` + frame PNGs (not tracked in git) | **Visualization only** — optional |
 | `make-monthly-maps.R` | Single-variable daily→monthly pipeline with basemap alignment; writes monthly ASC grids and a GIF. Focused on bottom salinity testing | `output-for-ecospace/env-drivers/CBEFS-hindcast/var-stack-NC/salinity_bott_*.nc`; basemap ASC | `output-for-ecospace/env-drivers/CBEFS-hindcast/bottom-salinity-test/ASCII-monthly/*.asc`; `GIF/bottom_salinity_monthly.gif` | **Visualization / QC** — single variable |
-| `process-CBEFS-hindcasts.R` | Earlier exploratory/introspection version of `process-CBEFS.R`. Contains `ncdf4`-based `inspect_nc_file()` and `discover_subdatasets()` helpers. Loop is partially commented out; references undefined `test_file_1`. **Candidate for archiving/deletion** | Same as `process-CBEFS.R` | In-memory stacks only (no file output in current state) | **Deprecated draft** — do not use for production |
 
-### preference-functions/
+### make-preference-functions/
 
 | Script | Purpose | Reads | Writes | Pipeline step |
 |--------|---------|-------|--------|---------------|
-| `query-env-preference-parameters.R` | Queries **FishBase** API (`rfishbase`) for 7 trait tables (species, growth, ecology, reproduction, stocks, oxygen tolerance, swimming speed); joins selected fields into a combined attributes table | `data/raw/species-list.csv`; FishBase API (online) | `data/derived/aquamaps-species-info/aquamaps-info_{species,growth,ecology,repro,stocks,oxygen,speed}.csv`; `data/derived/aquamaps-species-info/species_attributes.csv` | **Step 6 — run once per species update** |
-| `query-aquamaps-data.R` | Queries **AquaMaps** HSPEN database (`aquamapsdata`) for environmental preference envelopes by species key; aggregates by Ecospace functional group. **Needs rework** — references undefined `fg` variable; writes to `./global-data/` path that does not exist in repo | `data/raw/species-list.csv`; AquaMaps local SQLite DB | `./global-data/` (wrong path — needs updating) | **Step 7 — needs repair before use** |
-| `Make-preference-functions.R` | Generates double-logistic (habitat suitability) preference curves from the compiled parameter table; currently implements salinity only; writes Ecospace-formatted CSV matrix | `data/derived/env-pref-parameters.csv` | `output-for-ecospace/pref-functions/pref-funcs_Sal.csv` | **Step 8** (requires `env-pref-parameters.csv`) |
+| `query-aquamaps-data.R` | Queries **FishBase** API (`rfishbase`) for 7 trait tables (species, growth, ecology, reproduction, stocks, oxygen tolerance, swimming speed); joins selected fields into a combined attributes table | `data-inputs/species-info/species-list.csv`; FishBase API (online) | `data-inputs/species-info/aquamaps-species-info/aquamaps-info_{species,growth,ecology,repro,stocks,oxygen,speed}.csv`; `species_attributes.csv` | **Step 6 — run once per species update** |
+| `query-env-preference-parameters.R` | Queries **AquaMaps** HSPEN database (`aquamapsdata`) for environmental preference envelopes by species key; aggregates by Ecospace functional group. **Needs rework** — references undefined `fg` variable | `data-inputs/species-info/species-list.csv`; AquaMaps local SQLite DB | `data-inputs/species-info/speciesListGoM_QAQC_AMkeys.csv`; `data-inputs/env-preference-functions/fg-env-preference-parameters.csv` | **Step 7 — needs repair before use** |
+| `Make-preference-functions.R` | Generates double-logistic (habitat suitability) preference curves from the compiled parameter table; currently implements salinity only; writes Ecospace-formatted CSV matrix | `data-inputs/env-preference-functions/env-pref-parameters.csv` | `output-for-ecospace/pref-functions/pref-funcs_Sal.csv` | **Step 8** (requires `env-pref-parameters.csv`) |
 
 ### misc-code/
 
@@ -86,7 +87,8 @@ This repository builds all spatial and environmental inputs required to run a Ch
 ╔══════════════════════════════════════════════════════╗
 ║  PIPELINE B — Environmental Drivers                  ║
 ╠══════════════════════════════════════════════════════╣
-║  data/raw/CBEFS-hindcast/*.nc  (~43 GB, 40 files)    ║
+║  data-inputs/spatial-dynamic/CBEFS-hindcast/*.nc     ║
+║    (~43 GB, 40 files)                                ║
 ║    → process-CBEFS.R  (run_mode = "FULL")            ║
 ║    → var-stack-NC/<var>_<depth>_1985_2024.nc  (15)   ║
 ║        → aggregate-daily-stacks-to-monthly.R         ║
@@ -94,7 +96,8 @@ This repository builds all spatial and environmental inputs required to run a Ch
 ║        → [optional] make-gif-videos.R                ║
 ║            → GIFs/<var>/*.gif  (not in git)          ║
 ║                                                      ║
-║  data/raw/ches-clim-atlas-vims.nc  (gitignored)      ║
+║  data-inputs/spatial-dynamic/CBEFS-climatology/      ║
+║    ches-clim-atlas-vims.nc  (gitignored)             ║
 ║    → make-climatology-maps.R                         ║
 ║    → ches-atlas-climatology/<var>/<var>_<Mon>.asc    ║
 ╚══════════════════════════════════════════════════════╝
@@ -102,13 +105,15 @@ This repository builds all spatial and environmental inputs required to run a Ch
 ╔══════════════════════════════════════════════════════╗
 ║  PIPELINE C — Species Preference Functions           ║
 ╠══════════════════════════════════════════════════════╣
-║  data/raw/species-list.csv (25 rows / ~12 FGs)       ║
-║    → query-env-preference-parameters.R  (FishBase)   ║
-║    → data/derived/aquamaps-species-info/*.csv         ║
+║  data-inputs/species-info/species-list.csv           ║
+║    → query-aquamaps-data.R  (FishBase)               ║
+║    → data-inputs/species-info/aquamaps-species-info/ ║
 ║                                                      ║
-║    → query-aquamaps-data.R  (AquaMaps, needs rework) ║
+║    → query-env-preference-parameters.R               ║
+║      (AquaMaps, needs rework — fg variable bug)      ║
 ║    → [manually compiled]                             ║
-║    → data/derived/env-pref-parameters.csv            ║
+║    → data-inputs/env-preference-functions/           ║
+║      env-pref-parameters.csv                         ║
 ║        → Make-preference-functions.R                 ║
 ║        → output-for-ecospace/pref-functions/         ║
 ║          pref-funcs_Sal.csv  (salinity only so far)  ║
@@ -147,10 +152,9 @@ All final Ecospace inputs live in `output-for-ecospace/`:
 
 | Issue | Location | Priority |
 |-------|----------|----------|
-| `query-aquamaps-data.R` references undefined `fg` variable and writes to `./global-data/` path that does not exist — needs repair before re-running AquaMaps HSPEN queries | `preference-functions/` | High |
-| CBEFS hindcast stacks are not yet reprojected to the basemap grid — CRS is intentionally ignored in current scripts but must be resolved before Ecospace ingestion | `environmental-drivers/` | High |
+| `query-env-preference-parameters.R` references undefined `fg` variable (should be `sp_list`) throughout — needs repair before re-running AquaMaps HSPEN queries; output paths are now correct | `make-preference-functions/` | High |
+| CBEFS hindcast stacks are not yet reprojected to the basemap grid — CRS is intentionally ignored in current scripts but must be resolved before Ecospace ingestion | `make-environmental-drivers/` | High |
 | Preference functions only implemented for salinity; temperature, dissolved oxygen, depth, and NO₃ curves not yet generated | `Make-preference-functions.R` | Medium |
-| `dispersal-rates/` is an empty placeholder directory | repo root | Low |
 | Git history contains ~500 MB of previously committed GIF/PNG media; files are now untracked but history not cleaned — use BFG Repo-Cleaner or `git filter-branch` if repo size is a concern | git | Low |
 
 ---
@@ -159,33 +163,25 @@ All final Ecospace inputs live in `output-for-ecospace/`:
 
 Items needed before the Ecospace model can run, listed in approximate priority order.
 
-### 7a. Commit staged changes
-
-All changes from the documentation and cleanup session are staged but not yet committed. Run:
-
-```r
-git commit -m "Add documentation, clean up code, remove GIF tracking"
-```
-
-### 7b. Resolve CBEFS CRS and alignment
+### 7a. Resolve CBEFS CRS and alignment
 
 CBEFS hindcast data is on an oblique stereographic projection (+proj=stere +lon_0=283.54 +lat_0=37.75), 336×564 grid, ~600 m resolution. All current CBEFS scripts deliberately skip CRS handling. Before `output-for-ecospace/env-drivers/` products can be used in Ecospace, they must be reprojected and resampled to the 88×56 basemap. This likely requires adding a reprojection step inside `process-CBEFS.R` or a new post-processing script.
 
-### 7c. Build missing static habitat layer scripts
+### 7b. Build missing static habitat layer scripts
 
 Five habitat layers are needed for Ecospace but have no scripts:
 
 | Layer | Suggested script | Notes |
 |-------|-----------------|-------|
-| SAV | `habitat/make-sav-layer.R` | VIMS annual SAV survey data |
-| Soft-bottom substrate | `habitat/make-substrate-layers.R` | NOAA/state benthic survey |
+| SAV | `make-habitat-maps/make-sav-layer.R` | VIMS annual SAV survey data |
+| Soft-bottom substrate | `make-habitat-maps/make-substrate-layers.R` | NOAA/state benthic survey |
 | Hard-bottom / structured habitat | same script | |
-| Oyster / bivalve reef | `habitat/make-oyster-layer.R` | MD/VA oyster reef GIS |
-| Marsh / emergent vegetation | `habitat/make-marsh-layer.R` | NOAA C-CAP or NWI |
+| Oyster / bivalve reef | `make-habitat-maps/make-oyster-layer.R` | MD/VA oyster reef GIS |
+| Marsh / emergent vegetation | `make-habitat-maps/make-marsh-layer.R` | NOAA C-CAP or NWI |
 
-Each script should follow the existing pattern: read source → resample to basemap (`resample(x, basemap, method = "max")`) → write `.asc` to `output-for-ecospace/` + PNG to `habitat/plots/`.
+Source data for these layers should go in `data-inputs/spatial-static/habitats/`. Each script should follow the existing pattern: read source → resample to basemap (`resample(x, basemap, method = "max")`) → write `.asc` to `output-for-ecospace/` + PNG to `make-habitat-maps/plots/`.
 
-### 7d. Extend preference functions to remaining variables
+### 7c. Extend preference functions to remaining variables
 
 `Make-preference-functions.R` currently only generates salinity curves. Extend to:
 - Temperature (`driver = "Temp"`, `max = 40`)
@@ -193,33 +189,32 @@ Each script should follow the existing pattern: read source → resample to base
 - Depth (`driver = "Depth"`, `max = 400`, `range = "wide"`)
 - NO₃ / nutrient (`driver = "NO3"`)
 
-Parameters for each variable need entries in `data/derived/env-pref-parameters.csv`.
+Parameters for each variable need entries in `data-inputs/env-preference-functions/env-pref-parameters.csv`.
 
-### 7e. Repair `query-aquamaps-data.R`
+### 7d. Repair `query-env-preference-parameters.R` (AquaMaps script)
 
-The AquaMaps HSPEN query script has two bugs:
-1. References `fg` (should be `sp_list`)
-2. Writes to `./global-data/` (should be `./data/derived/`)
+The AquaMaps HSPEN query script (`query-env-preference-parameters.R`) has one remaining bug:
+1. References undefined `fg` variable (should be `sp_list`) on lines 41, 44–45, 49–51, 64, 81, 102, 114
 
-Fix these and re-run to programmatically regenerate `env-pref-parameters.csv` entries.
+Output paths are already fixed (`data-inputs/species-info/` and `data-inputs/env-preference-functions/`). Fix the `fg` → `sp_list` rename and re-run to programmatically regenerate `env-pref-parameters.csv` entries.
 
-### 7f. Expand species and FG lists for lower trophic groups
+### 7e. Expand species and FG lists for lower trophic groups
 
-`data/raw/species-list.csv` only covers fish/crustacean groups. Add representative entries (or placeholders) for:
+`data-inputs/species-info/species-list.csv` only covers fish/crustacean groups. Add representative entries (or placeholders) for:
 - Bivalves
 - Benthic Invertebrates
 - Zooplankton
 
 SAV, Phytoplankton, and Detritus do not need FishBase queries but should appear in `env-pref-parameters.csv` as FG rows.
 
-### 7g. Add life-stage splits to species-list.csv
+### 7f. Add life-stage splits to species-list.csv
 
 The target Ecospace model uses stage-specific FGs (e.g., Blue Catfish 0–1 yr, 1-harvest, trophy; three striped bass stages; two sturgeon stages; three blue crab stages). The current `species-list.csv` does not distinguish stages. `env-pref-parameters.csv` already has stage-specific rows for Blue Catfish — the same treatment is needed for Striped Bass, Sturgeon, and Blue Crab.
 
-### 7h. QA output bundle for every spatial product
+### 7g. QA output bundle for every spatial product
 
 For each final `.asc` file, generate a small QA record:
-- PNG map saved to `habitat/plots/` or `environmental-drivers/env_climatology/figs/`
+- PNG map saved to `make-habitat-maps/plots/` or `make-environmental-drivers/env_climatology/figs/`
 - `compareGeom()` check against basemap
 - Summary of min, max, NA count, and dimensions
 
