@@ -9,7 +9,7 @@ library(stringr)
 ## First time running will need to install and set up aquamaps
 ## initial run-once step required to install remote db locally
 
-#install.packages("devtools") 
+#install.packages("devtools")
 library("devtools")
 #install_github("raquamaps/aquamapsdata", dependencies = TRUE)
 #devtools::install_github("RAquaMaps/aquamapsdata", dependencies = TRUE)
@@ -38,21 +38,21 @@ sp_list <- sp_list %>% filter(!is.na(Species)); nrow(sp_list)
 
 ## QA/QC: Periods in Sciname seem to break am_search_fuzzy. Also, all rows with 'sp' or 'spp' or 'spp.' are repeated
 rm_ls <- paste(c('spp.','sp.','spp', 'sp.', '-', '#', "/", "<", ">", "0", ","), collapse = '|')
-fg <- fg %>% filter(!grepl(rm_ls, Sciname)); nrow(fg)
+sp_list <- sp_list %>% filter(!grepl(rm_ls, Sciname)); nrow(sp_list)
 
 ## Query aquamaps to get species keys for each species
-for (i in 1:nrow(fg)){
-  fg$Key[i] <- paste(am_search_fuzzy(fg$Sciname[i]) %>% pull(key) %>% as.array(), collapse = ' | ')
+for (i in 1:nrow(sp_list)){
+  sp_list$Key[i] <- paste(am_search_fuzzy(sp_list$Sciname[i]) %>% pull(key) %>% as.array(), collapse = ' | ')
 }
 
 ## QA/QC Remove rows with no keys or with duplicate keys
-fg <- fg %>% 
-  filter(Key != '') %>% 
-  distinct(Key, .keep_all = TRUE); nrow(fg)
-fg$ID_sp <- sprintf("Sp_%03d", 1:nrow(fg))
+sp_list <- sp_list %>%
+  filter(Key != '') %>%
+  distinct(Key, .keep_all = TRUE); nrow(sp_list)
+sp_list$ID_sp <- sprintf("Sp_%03d", 1:nrow(sp_list))
 
 ## Write out species list
-write.csv(fg, "./data-inputs/species-info/speciesListGoM_QAQC_AMkeys.csv", row.names = F)
+write.csv(sp_list, "./data-inputs/species-info/speciesListGoM_QAQC_AMkeys.csv", row.names = F)
 
 ##------------------------------------------------------------------------------
 ## Query HSPEN environmental preferences
@@ -61,10 +61,10 @@ write.csv(fg, "./data-inputs/species-info/speciesListGoM_QAQC_AMkeys.csv", row.n
 
 ## Make long dataframe with unique key
 long_fg  <- data.frame()
-for (i in 1:nrow(fg)) {
+for (i in 1:nrow(sp_list)) {
   #i = 4
-  row = fg[i, ]
-  key_ls  <- as.list(scan(text=fg$Key[i], what=""))
+  row = sp_list[i, ]
+  key_ls  <- as.list(scan(text=sp_list$Key[i], what=""))
   key_ls  <- key_ls[key_ls != "|"]
   row$Key <- NULL
   row     <- row %>% slice(rep(1:n(), each = length(key_ls)))
@@ -80,7 +80,7 @@ for (i in 1:nrow(long_fg)) {
   #i = 4
   key <- long_fg$Key[i]
   prf <- am_hspen() %>% filter(SpeciesID == key) ## Query preferences from aquamaps
-  prf <- prf %>% 
+  prf <- prf %>%
     select(LifeStage,   Pelagic,
            DepthMin,    DepthPrefMin,    DepthPrefMax,    DepthMax,
            TempMin,     TempPrefMin,     TempPrefMax,     TempMax,
@@ -93,25 +93,25 @@ for (i in 1:nrow(long_fg)) {
 }
 
 ## Aggregate by species
-summ_pref <- long_pref %>% 
-  group_by(ID_sp) %>% 
+summ_pref <- long_pref %>%
+  group_by(ID_sp) %>%
   summarise(N_hspn = n(),
             across(where(is.numeric), ~ round(mean(.x, na.rm = TRUE),2))
   )
 
-pref_bysp <- merge(fg, summ_pref, by = "ID_sp", all.x = T)
+pref_bysp <- merge(sp_list, summ_pref, by = "ID_sp", all.x = T)
 pref_bysp <- pref_bysp[order(pref_bysp$ID_sp), ]
 
 ## Aggregate by EwE FG
-pref_byfg <- pref_bysp %>% 
-  group_by(EwE_num, EwE_name) %>% 
+pref_byfg <- pref_bysp %>%
+  group_by(EwE_num, EwE_name) %>%
   summarise(
     N_spp  = n(),
     N_hspn = sum(N_hspn),
     across(where(is.numeric), ~ round(mean(.x, na.rm = TRUE),2)),
   )
 
-fg_pref         <- data.frame(EwE_num = unique(fg$EwE_num))
+fg_pref         <- data.frame(EwE_num = unique(sp_list$EwE_num))
 fg_pref$rownum  <- 1:nrow(fg_pref)
 fg_pref         <- merge(fg_pref, pref_byfg, by = "EwE_num", all.x = T)
 fg_pref         <- fg_pref[order(fg_pref$rownum), ]
