@@ -152,7 +152,7 @@ All final Ecospace inputs live in `output-for-ecospace/`:
 
 | Issue | Location | Priority |
 |-------|----------|----------|
-| `query-env-preference-parameters.R` references undefined `fg` variable (should be `sp_list`) throughout — needs repair before re-running AquaMaps HSPEN queries; output paths are now correct | `make-preference-functions/` | High |
+| `query-env-preference-parameters.R` — `fg` variable bug fixed; output paths corrected. Script has not been re-run against AquaMaps DB; verify results before treating output as authoritative | `make-preference-functions/` | Medium |
 | CBEFS hindcast stacks are not yet reprojected to the basemap grid — CRS is intentionally ignored in current scripts but must be resolved before Ecospace ingestion | `make-environmental-drivers/` | High |
 | Preference functions only implemented for salinity; temperature, dissolved oxygen, depth, and NO₃ curves not yet generated | `Make-preference-functions.R` | Medium |
 | Git history contains ~500 MB of previously committed GIF/PNG media; files are now untracked but history not cleaned — use BFG Repo-Cleaner or `git filter-branch` if repo size is a concern | git | Low |
@@ -191,12 +191,9 @@ Source data for these layers should go in `data-inputs/spatial-static/habitats/`
 
 Parameters for each variable need entries in `data-inputs/env-preference-functions/env-pref-parameters.csv`.
 
-### 7d. Repair `query-env-preference-parameters.R` (AquaMaps script)
+### 7d. Re-run `query-env-preference-parameters.R` and verify AquaMaps output
 
-The AquaMaps HSPEN query script (`query-env-preference-parameters.R`) has one remaining bug:
-1. References undefined `fg` variable (should be `sp_list`) on lines 41, 44–45, 49–51, 64, 81, 102, 114
-
-Output paths are already fixed (`data-inputs/species-info/` and `data-inputs/env-preference-functions/`). Fix the `fg` → `sp_list` rename and re-run to programmatically regenerate `env-pref-parameters.csv` entries.
+The `fg` variable bug and all output paths are now fixed. Re-run the script against the AquaMaps local SQLite DB to regenerate `data-inputs/env-preference-functions/fg-env-preference-parameters.csv`, then verify the output matches the manually curated `env-pref-parameters.csv` (or use it to fill in missing FG rows).
 
 ### 7e. Expand species and FG lists for lower trophic groups
 
