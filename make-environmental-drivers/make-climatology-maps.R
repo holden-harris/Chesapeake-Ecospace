@@ -1,0 +1,206 @@
+## make-env-drivers.R
+## Purpose: Explore Chesapeake Bay Atlas netCDF file and build raster stacks
+## Input:  ./data-inputs/spatial-dynamic/CBEFS-climatology/ches-clim-atlas-vims.nc
+## Output: ./output-for-ecospace/env-drivers/ches-atlas-climatology/<var>/<var>_<Mon>.asc
+
+## Load packages
+rm(list = ls())
+library(ncdf4)   ## For netCDF introspection
+library(terra)   ## For raster stacks / spatial work
+library(dplyr)   ## For convenience
+library(stringr) ## For name handling
+
+## Directories
+nc_path   <- "./data-inputs/spatial-dynamic/CBEFS-climatology/ches-clim-atlas-vims.nc"
+out_ascii_dir <- "./output-for-ecospace/env-drivers/ches-atlas-climatology"
+
+dir.create(out_ascii_dir, showWarnings = FALSE, recursive = TRUE)
+dir.create(out_ascii_dir, showWarnings = FALSE, recursive = TRUE)
+
+
+## -----------------------------------------------------------------------------
+## Explore the netCDF structure (variables, dims, metadata)
+
+## --- Open file and list contents ---
+nc <- nc_open(nc_path)
+
+## Print high-level summary to console
+print(nc)  ## Shows variables, dimensions, attributes
+
+## Check dimensions (lon/lat, maybe time/band)
+names(nc$dim)
+lon  <- nc$dim$longitude$vals
+lat  <- nc$dim$latitude$vals
+
+range(lon); range(lat)
+length(lon); length(lat)
+
+## Close connection after exploring
+nc_close(nc)
+
+## Extract variable names
+var_names <- names(nc$var); var_names
+
+## -----------------------------------------------------------------------------
+## Make stacks
+
+## Variables to turn into raster stacks
+vars_to_stack <- c(
+  "salinity_bottom",
+  "salinity_surface",
+  "temperature_surface",
+  "temperature_bottom",
+  "O2_bottom"
+)
+
+## Main loop: build stacks and save
+env_stacks <- list()
+
+for (vn in vars_to_stack) {
+#  vn = vars_to_stack[1]
+  message("Processing variable: ", vn)
+  
+  ## terra::rast will create a SpatRaster with layers = monthly bands (1–12)
+  r <- terra::rast(nc_path, sub = vn)
+  print(r)## Check geometry
+  
+  ## Add a monthly time dimension (Jan–Dec climatology)
+  months <- seq.Date(
+    from = as.Date("2000-01-15"),  ## arbitrary year; just month-of-year
+    by   = "1 month",
+    length.out = nlyr(r)
+  )
+  time(r) <- months
+  names(r) <- format(months, "%b")   ## Name layers as months
+  
+  ## Add to stacks
+  env_stacks[[vn]] <- r
+}
+
+## Plot climatology ------------------------------------------------------------
+## Directory for figures
+fig_dir <- "./make-environmental-drivers/env_climatology/figs"
+dir.create(fig_dir, showWarnings = FALSE, recursive = TRUE)
+
+## Loop over variables and make a 12-panel plot for each
+for (vn in vars_to_stack) {
+#  vn = "salinity_bottom"; print(vn)
+  r <- env_stacks[[vn]]
+  ## --- Save to PNG ---
+  png_file <- file.path(fig_dir, paste0(vn, "_climatology.png"))
+  png(png_file, width = 1800, height = 1200, res = 150)
+  
+  ## Loop through 12 months
+  par(mfrow = c(3, 4), mar = c(2, 2, 3, 4))
+  for (i in 1:nlyr(r)) {
+    plot(r[[i]], main = names(r)[i])
+  }
+  dev.off()
+}
+
+## -----------------------------------------------------------------------------
+##
+## Match env_stacks rasters to Ecospace basemap grid
+
+basemap <- terra::rast("./output-for-ecospace/habitat/base-depth-map-88x56.asc")
+plot(basemap, main = "Ecospace basemap (depth)", colNA = 'gray')
+
+## Check CRS (just to know what we're working with)
+terra::crs(basemap)
+terra::ext(basemap)
+terra::res(basemap)
+
+ecospace_stacks <- list()
+
+## Loop through environmental variables ----------------------------------------
+for (vn in vars_to_stack) {
+
+  message("Aligning Ecospace: ", vn)
+  r_orig <- env_stacks[[vn]]
+  
+  ## Keep original names & time
+  lyr_names <- names(r_orig)
+  lyr_time  <- time(r_orig)
+  
+  ## Project if CRS differs
+  if (crs(basemap) != crs(r_orig)) {
+    message("  - Projecting from ", terra::crs(r_orig), " to ", terra::crs(basemap))
+    r_new <- terra::project(r_orig, basemap)   ## bilinear by default for continuous vars
+  } else {
+    message(" - CRS is the same")
+    r_new <- r_orig
+  }
+  
+  ## Crop to match extent
+  r_new <- terra::crop(r_new, r_orig)
+  
+  ## Resample to basemap resolution/extent
+  message("  - Resampling to basemap grid (", ncol(basemap), "x", nrow(basemap), ")")
+  r_new <- terra::resample(r_new, basemap, method = "bilinear")
+  
+  ## Optional: mask to basemap non-NA (e.g. ocean only)
+  message("  - Masking to basemap")
+  r_new <- terra::mask(r_new, basemap)
+  
+  ## Restore names & time (usually preserved, but be explicit)
+  names(r_new) <- lyr_names
+  if (!all(is.na(lyr_time))) {
+    time(r_new) <- lyr_time
+  }
+
+  ## Update 
+  ecospace_stacks[[vn]] <- r_new
+  
+  ## Plot check 
+  plot(r_new[[1]], main = paste0(vn, " – ", names(r_new)[1], " (Ecospace grid)"))
+}
+
+
+## Write out raster stacks -----------------------------------------------------
+##
+for (vn in vars_to_stack) {
+  
+  r_stack <- ecospace_stacks[[vn]]
+  message("Writing ASCII files for variable: ", vn)
+  
+  ## Create subfolder for this variable
+  vn_dir <- file.path(out_ascii_dir, vn)
+  dir.create(vn_dir, showWarnings = FALSE, recursive = TRUE)
+  
+  ## Loop through months (layers)
+  for (i in 1:nlyr(r_stack)) {
+    month_name <- names(r_stack)[i]   ## "Jan", "Feb", etc.
+    
+    ## File name inside this variable’s folder
+    asc_file <- file.path(
+      vn_dir,
+      paste0(vn, "_", month_name, ".asc")
+    )
+    
+    message("  - ", asc_file)
+    
+    terra::writeRaster(
+      r_stack[[i]],
+      filename = asc_file,
+      NAflag   = -9999,
+      overwrite = TRUE
+    )
+  }
+}
+
+## Plot downscaled climatology ------------------------------------------------------------
+## Loop over variables and make a 12-panel plot for each
+for (vn in vars_to_stack) {
+  #  vn = "salinity_bottom"; print(vn)
+  r <- ecospace_stacks[[vn]]
+  ## --- Save to PNG ---
+  png_file <- file.path(fig_dir, paste0(vn, "_climatology_downscaled.png"))
+  png(png_file, width = 1800, height = 1200, res = 150)
+  
+  ## Loop through 12 months
+  par(mfrow = c(3, 4), mar = c(2, 2, 3, 4))
+  for (i in 1:nlyr(r)) {
+    plot(r[[i]], main = names(r)[i])
+  }
+}
+dev.off()
