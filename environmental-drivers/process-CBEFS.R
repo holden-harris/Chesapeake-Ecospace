@@ -1,5 +1,17 @@
 ## -----------------------------------------------------------------------------
 ## CBEFS processing
+##
+## Purpose: Read yearly CBEFS hindcast NetCDF files (1985–2024), split each
+##          variable into 3 depth bands (_bott, _surf, _davg), and write
+##          combined multi-year raster stacks for use as Ecospace env drivers.
+##
+## Input:  ./data/raw/CBEFS-hindcast/holdenharris_YYYY_v*.nc  (40 files, ~43 GB)
+## Output: ./output-for-ecospace/env-drivers/CBEFS-hindcast/
+##           var-stack-NC/<var>_<depth>_<yr>_<yr>.nc
+##           var-stack-TIFF/<var>_<depth>_<yr>_<yr>.tif
+##
+## CBEFS reference: Bever et al. 2021, Env. Modelling & Software
+##   https://doi.org/10.1016/j.envsoft.2021.105036
 
 rm(list = ls())
 
@@ -15,8 +27,9 @@ terraOptions(progress = 1, memfrac = 0.7)
 ## User options
 
 out_format       <- "BOTH"   ## Options: "TIFF", "NC", "BOTH"
-run_mode         <- "TEST"   ## Options: "TEST", "FULL"
-variables_to_run <- "ALL"    ## Options: "ALL"or specific variables: c("temperature","salinity")
+run_mode         <- "TEST"   ## Options: "TEST" (first 4 years), "FULL" (all years)
+variables_to_run <- "ALL"    ## Options: "ALL" or specific: c("temperature","salinity")
+verbose_mode     <- FALSE    ## TRUE = inspect NetCDF structure before processing
 
 ## -----------------------------------------------------------------------------
 ## Directories
@@ -100,10 +113,60 @@ file_tbl <- tibble(
 ) %>%
   arrange(year)
 
-variables <- c("temperature", "salinity", "diss_o2", "phytoplankton", "NO3")
+if (any(is.na(file_tbl$year))) stop("Could not parse years from one or more filenames.")
+if (anyDuplicated(file_tbl$year) > 0) stop("Duplicate years detected in the file list.")
+
+expected_years <- 1985:2024
+if (!setequal(file_tbl$year, expected_years)) {
+  warning("Years present do not exactly match 1985:2024. Check file coverage.")
+}
 
 year_min <- min(file_tbl$year)
 year_max <- max(file_tbl$year)
+
+## -----------------------------------------------------------------------------
+## Optional: inspect NetCDF structure of the first file before processing
+
+if (verbose_mode) {
+  library(ncdf4)
+
+  nc_att_value <- function(nc, varid, attname) {
+    att <- ncatt_get(nc, varid = varid, attname = attname)
+    if (isTRUE(att$hasatt)) as.character(att$value) else NA_character_
+  }
+
+  inspect_nc_file <- function(nc_file) {
+    nc <- nc_open(nc_file)
+    on.exit(nc_close(nc), add = TRUE)
+
+    dim_tbl <- tibble(
+      dim_name = names(nc$dim),
+      length   = vapply(nc$dim, function(x) x$len, numeric(1)),
+      units    = vapply(nc$dim, function(x) {
+        if (is.null(x$units) || identical(x$units, "")) NA_character_ else as.character(x$units)
+      }, character(1))
+    )
+
+    var_tbl <- bind_rows(lapply(names(nc$var), function(vn) {
+      vv <- nc$var[[vn]]
+      tibble(
+        var_name      = vn,
+        ndims         = vv$ndims,
+        dim_names     = paste(vapply(vv$dim, function(d) d$name, character(1)), collapse = " | "),
+        units         = if (is.null(vv$units) || identical(vv$units, "")) NA_character_ else as.character(vv$units),
+        long_name     = nc_att_value(nc, vn, "long_name"),
+        standard_name = nc_att_value(nc, vn, "standard_name")
+      )
+    }))
+
+    list(dimensions = dim_tbl, variables = var_tbl)
+  }
+
+  cat("\n## Inspecting first NetCDF file:", basename(file_tbl$file[1]), "\n")
+  info <- inspect_nc_file(file_tbl$file[1])
+  cat("\n## Dimensions:\n"); print(info$dimensions, n = Inf)
+  cat("\n## Variables:\n");  print(info$variables,  n = Inf)
+}
 
 ## -----------------------------------------------------------------------------
 ## Determine run mode

@@ -8,6 +8,7 @@
 
 ## Folders
 environmental-drivers/ches-bay-atlas/
+hoard/
 
 ## NetCDF (ROMS-ECB, CMIP6, downscaled drivers)
 *.nc
@@ -15,6 +16,7 @@ environmental-drivers/ches-bay-atlas/
 *.cdf
 
 ## GIS / spatial files
+*.png
 *.shp
 *.shx
 *.dbf
@@ -82,6 +84,14 @@ venv/
 
 ### -----------------------------
 ###  FIGURE & REPORT OUTPUTS
+
+## GIF animations and PNG frame sequences (large media, regenerable from scripts)
+*.gif
+environmental-drivers/GIFs/
+
+## Monthly TIFF aggregates written by make-gif-videos.R (regenerable)
+## Note: var-stack-TIFF and var-stack-NC outputs are also large; NC outputs are
+## already excluded by *.nc above.
 
 ### -----------------------------
 ###  MISC PROJECT FILES

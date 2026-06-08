@@ -357,17 +357,18 @@ cat("START LOOP 2: GIF CREATION\n")
 
 for (j in seq_len(nrow(file_settings))) {
   
-  file_name  <- file_settings$file_name[j]
-  plot_label <- file_settings$plot_label[j]
-  units_lab  <- file_settings$units[j]
-  pal_name   <- file_settings$palette[j]
-  
+  file_name       <- file_settings$file_name[j]
+  plot_label      <- file_settings$plot_label[j]
+  units_lab       <- file_settings$units[j]
+  pal_name        <- file_settings$palette[j]
+  reverse_palette <- file_settings$reverse_palette[j]
+
   file_stub  <- file_path_sans_ext(basename(file_name))
   period_tag <- paste0(start_year, "_", end_year)
-  
+
   var_dir_out <- file.path(dir_out, file_stub)
   dir.create(var_dir_out, showWarnings = FALSE, recursive = TRUE)
-  
+
   frame_dir <- file.path(var_dir_out, "gif-frames")
   if (dir.exists(frame_dir)) {
     unlink(frame_dir, recursive = TRUE, force = TRUE)
@@ -473,31 +474,16 @@ for (j in seq_len(nrow(file_settings))) {
   
   cat("\nMonthly value range used for plotting:\n")
   print(zlim)
-  zlim = c(0,80)
-  
+
   ## ---------------------------------------------------------------------------
   ## Get plotting colors robustly
-  
+
   plot_cols <- get_plot_cols(
     n_cols          = n_cols,
     pal_name        = pal_name,
     reverse_palette = reverse_palette
   )
-  
-  ## ---------------------------------------------------------------------------
-  ## Optional quick plot check of first layer
-  
-  windows()
-  plot(
-    x_month[[1]],
-    main  = paste0(plot_label, ": ", gsub("^X", "", names(x_month)[1])),
-    col   = plot_cols,
-    range = zlim,
-    plg   = list(title = units_lab),
-    mar   = c(3, 3, 3, 6),
-    colNA = "gray75"
-  )
-  
+
   ## ---------------------------------------------------------------------------
   ## Make PNG frames
   
