@@ -103,6 +103,7 @@ for (vn in vars_to_stack) {
 ## Match env_stacks rasters to Ecospace basemap grid
 
 basemap <- terra::rast("./output-for-ecospace/habitat/base-depth-map-88x56.asc")
+crs(basemap) <- "EPSG:4326"   ## basemap is WGS84 degrees; the .asc stores no CRS
 plot(basemap, main = "Ecospace basemap (depth)", colNA = 'gray')
 
 ## Check CRS (just to know what we're working with)
@@ -131,9 +132,10 @@ for (vn in vars_to_stack) {
     r_new <- r_orig
   }
   
-  ## Crop to match extent
-  r_new <- terra::crop(r_new, r_orig)
-  
+  ## (Removed: crop(r_new, r_orig) -- after projecting, r_orig's extent is in the
+  ##  source CRS, so cropping to it was incorrect. resample() below handles the
+  ##  extent/resolution match to the basemap.)
+
   ## Resample to basemap resolution/extent
   message("  - Resampling to basemap grid (", ncol(basemap), "x", nrow(basemap), ")")
   r_new <- terra::resample(r_new, basemap, method = "bilinear")
