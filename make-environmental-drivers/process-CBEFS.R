@@ -1,14 +1,22 @@
 ## -----------------------------------------------------------------------------
 ## CBEFS processing
 ##
-## Purpose: Read yearly CBEFS hindcast NetCDF files (1985–2024), split each
+## Purpose: Read yearly CBEFS hindcast NetCDF files (1985-2024), split each
 ##          variable into 3 depth bands (_bott, _surf, _davg), and write
-##          combined multi-year raster stacks for use as Ecospace env drivers.
+##          combined multi-year raster stacks (NetCDF) for use as Ecospace
+##          environmental drivers.
 ##
 ## Input:  ./data-inputs/spatial-dynamic/CBEFS-hindcast/holdenharris_YYYY_v*.nc  (40 files, ~43 GB)
 ## Output: ./output-for-ecospace/env-drivers/CBEFS-hindcast/
-##           var-stack-NC/<var>_<depth>_<yr>_<yr>.nc
-##           var-stack-TIFF/<var>_<depth>_<yr>_<yr>.tif
+##           var-stack-NC/<var>_<depth>_<yr>_<yr>.nc    (canonical)
+##           var-stack-TIFF/<var>_<depth>_<yr>_<yr>.tif (only if out_format includes TIFF)
+##
+## Georeferencing note: the output stacks are kept in the native model grid
+## (index space). They are NOT given a CRS here -- the curvilinear lon/lat are
+## applied later, once, when regridding to the Ecospace basemap (see
+## cbefs-helpers.R::build_regrid_index). The vertical flip below keeps the model
+## grid north-up; build_regrid_index() applies the SAME flip so the regrid index
+## stays aligned with these stacks.
 ##
 ## CBEFS reference: Bever et al. 2021, Env. Modelling & Software
 ##   https://doi.org/10.1016/j.envsoft.2021.105036
@@ -24,28 +32,31 @@ terraOptions(progress = 1, memfrac = 0.7)
 
 ################################################################################
 ##
-## User options
+## User setup
 
-out_format       <- "BOTH"   ## Options: "TIFF", "NC", "BOTH"
-run_mode         <- "TEST"   ## Options: "TEST" (first 4 years), "FULL" (all years)
+out_format       <- "NC"     ## Options: "NC" (canonical), "TIFF", "BOTH"
+run_mode         <- "TEST"   ## Options: "TEST" (salinity/bott, first 4 years), "FULL" (all)
 variables_to_run <- "ALL"    ## Options: "ALL" or specific: c("temperature","salinity")
+nc_compression   <- 2        ## NetCDF deflate level 1-9. Lower = faster writes.
 verbose_mode     <- FALSE    ## TRUE = inspect NetCDF structure before processing
+
+depths_all <- c("bott", "surf", "davg") ## bottom, surface, and depth-averaged
 
 ## -----------------------------------------------------------------------------
 ## Directories
 
 nc_path <- "./data-inputs/spatial-dynamic/CBEFS-hindcast"
 
-tmp_dir_tif <- "./output-for-ecospace/env-drivers/CBEFS-hindcast/tmp-yearly-TIFF"
+#tmp_dir_tif <- "./output-for-ecospace/env-drivers/CBEFS-hindcast/tmp-yearly-TIFF"
 tmp_dir_nc  <- "./output-for-ecospace/env-drivers/CBEFS-hindcast/tmp-yearly-NC"
 
-out_dir_tif <- "./output-for-ecospace/env-drivers/CBEFS-hindcast/var-stack-TIFF"
+#out_dir_tif <- "./output-for-ecospace/env-drivers/CBEFS-hindcast/var-stack-TIFF"
 out_dir_nc  <- "./output-for-ecospace/env-drivers/CBEFS-hindcast/var-stack-NC"
 
-dir.create(tmp_dir_tif, showWarnings = FALSE, recursive = TRUE)
-dir.create(tmp_dir_nc,  showWarnings = FALSE, recursive = TRUE)
-dir.create(out_dir_tif, showWarnings = FALSE, recursive = TRUE)
-dir.create(out_dir_nc,  showWarnings = FALSE, recursive = TRUE)
+dir.create(out_dir_nc, showWarnings = FALSE, recursive = TRUE)
+if (out_format %in% c("TIFF", "BOTH")) {
+  dir.create(out_dir_tif, showWarnings = FALSE, recursive = TRUE)
+}
 
 
 ################################################################################
@@ -53,67 +64,72 @@ dir.create(out_dir_nc,  showWarnings = FALSE, recursive = TRUE)
 ## Set up processing
 
 ## -----------------------------------------------------------------------------
-## Determine variables to process
+## Validate out_format and decide which yearly-chunk format to use.
+## Yearly chunks are a memory tactic (write per-year, then re-open as a
+## file-backed stack and combine). Use TIFF chunks when TIFF is requested,
+## otherwise NC chunks.
 
-variables_all <- c(
-  "temperature",
-  "salinity",
-  "diss_o2",
-  "phytoplankton",
-  "NO3"
-)
+if (out_format == "NC") {
+  tmp_ext <- ".nc";  tmp_dir <- tmp_dir_nc
+} else if (out_format %in% c("TIFF", "BOTH")) {
+  tmp_ext <- ".tif"; tmp_dir <- tmp_dir_tif
+} else {
+  stop("out_format must be one of: 'NC', 'TIFF', 'BOTH'")
+}
+dir.create(tmp_dir, showWarnings = FALSE, recursive = TRUE)
+
+## -----------------------------------------------------------------------------
+## Determine variables and depths to process
+
+variables_all <- c("temperature", "salinity", "diss_o2", "phytoplankton", "NO3")
 
 if (length(variables_to_run) == 1 && variables_to_run == "ALL") {
   variables <- variables_all
-  cat("\nVariables selected: ALL\n")
-  
 } else {
-  ## Validate requested variables
   bad_vars <- setdiff(variables_to_run, variables_all)
-  
   if (length(bad_vars) > 0) {
-    stop(
-      "Unknown variable(s): ",
-      paste(bad_vars, collapse = ", ")
-    )
+    stop("Unknown variable(s): ", paste(bad_vars, collapse = ", "))
   }
   variables <- variables_to_run
-  cat("\nVariables selected:\n")
-  print(variables)
 }
+
+depths <- depths_all
 
 ## -----------------------------------------------------------------------------
-## Set up writing TIFF or NC or BOTH
+## Determine run mode (TEST = salinity / bott / first 4 years only)
 
-## Use TIFF yearly chunks for TIFF and BOTH
-## Use NC yearly chunks only when final output is NC only
-if (out_format %in% c("TIFF", "BOTH")) {
-  tmp_ext <- ".tif"
-  tmp_dir <- tmp_dir_tif
-} else if (out_format == "NC") {
-  tmp_ext <- ".nc"
-  tmp_dir <- tmp_dir_nc
+if (run_mode == "TEST") {
+
+  variables <- "salinity"
+  depths    <- "bott"
+  cat("\nRunning in TEST mode (salinity, bottom depth, first 4 years only)\n")
+
+} else if (run_mode == "FULL") {
+
+  cat("\nRunning in FULL mode (all selected variables, all depths, all years)\n")
+
 } else {
-  stop("out_format must be one of: 'TIFF', 'NC', 'BOTH'")
+  stop("run_mode must be 'TEST' or 'FULL'")
 }
+
 
 ## -----------------------------------------------------------------------------
 ## Make file table
 
 nc_files <- list.files(
-  path = nc_path,
+  path    = nc_path,
   pattern = "^holdenharris_[0-9]{4}_v[0-9]{8}\\.nc$",
   full.names = TRUE
 )
 
 file_tbl <- tibble(
-  file = nc_files,
+  file      = nc_files,
   file_name = basename(nc_files),
-  year = as.integer(str_match(file_name, "holdenharris_([0-9]{4})_v[0-9]{8}\\.nc$")[, 2])
+  year      = as.integer(str_match(file_name, "holdenharris_([0-9]{4})_v[0-9]{8}\\.nc$")[, 2])
 ) %>%
   arrange(year)
 
-if (any(is.na(file_tbl$year))) stop("Could not parse years from one or more filenames.")
+if (any(is.na(file_tbl$year)))      stop("Could not parse years from one or more filenames.")
 if (anyDuplicated(file_tbl$year) > 0) stop("Duplicate years detected in the file list.")
 
 expected_years <- 1985:2024
@@ -121,8 +137,14 @@ if (!setequal(file_tbl$year, expected_years)) {
   warning("Years present do not exactly match 1985:2024. Check file coverage.")
 }
 
-year_min <- min(file_tbl$year)
-year_max <- max(file_tbl$year)
+n_years <- if (run_mode == "TEST") min(4, nrow(file_tbl)) else nrow(file_tbl)
+
+## Year range actually processed (TEST only does the first n_years) -- used to
+## name the output stacks so a 4-year TEST file is not mislabelled 1985_2024.
+processed_years <- file_tbl$year[seq_len(n_years)]
+year_min <- min(processed_years)
+year_max <- max(processed_years)
+
 
 ## -----------------------------------------------------------------------------
 ## Optional: inspect NetCDF structure of the first file before processing
@@ -169,291 +191,153 @@ if (verbose_mode) {
 }
 
 ## -----------------------------------------------------------------------------
-## Determine run mode
-
-if (run_mode == "TEST") {
-  
-  cat("\nRunning in TEST mode (first 4 years only)\n")
-  n_years <- min(4, nrow(file_tbl))
-  
-} else if (run_mode == "FULL") {
-  
-  cat("\nRunning in FULL mode (all years)\n")
-  n_years <- nrow(file_tbl)
-  
-} else {
-  
-  stop("run_mode must be 'TEST' or 'FULL'")
-}
-
-## -----------------------------------------------------------------------------
 ## Quiet reader
 
 quiet_rast <- function(file, subds) {
   zz <- file(tempfile())
   sink(zz)
-  on.exit({
-    sink()
-    close(zz)
-  }, add = TRUE)
-  
-  r <- suppressWarnings(suppressMessages(rast(file, subds = subds)))
-  return(r)
+  on.exit({ sink(); close(zz) }, add = TRUE)
+  suppressWarnings(suppressMessages(rast(file, subds = subds)))
 }
 
 ## -----------------------------------------------------------------------------
-## Helper writer for yearly chunks
+## Single stack writer (yearly chunks and final stacks both use this)
 
-write_yearly_chunk <- function(r, filename, format_out, varname_out, longname_out) {
-  
+write_stack <- function(r, filename, format_out, varname_out, longname_out,
+                        compression = nc_compression) {
+
   if (format_out == "TIFF") {
     writeRaster(r, filename, overwrite = TRUE)
-  }
-  
-  if (format_out == "NC") {
+  } else if (format_out == "NC") {
     writeCDF(
       r,
-      filename = filename,
-      overwrite = TRUE,
-      varname = varname_out,
-      longname = longname_out,
-      compression = 4
+      filename    = filename,
+      overwrite   = TRUE,
+      varname     = varname_out,
+      longname    = longname_out,
+      compression = compression
     )
+  } else {
+    stop("write_stack(): format_out must be 'TIFF' or 'NC'")
   }
 }
 
-## -----------------------------------------------------------------------------
-## Helper writer for final combined stacks
-
-write_final_stack <- function(r, filename, format_out, varname_out, longname_out) {
-  
-  if (format_out == "TIFF") {
-    writeRaster(r, filename, overwrite = TRUE)
-  }
-  
-  if (format_out == "NC") {
-    writeCDF(
-      r,
-      filename = filename,
-      overwrite = TRUE,
-      varname = varname_out,
-      longname = longname_out,
-      compression = 4
-    )
-  }
-}
+depth_longname <- c(bott = "bottom", surf = "surface", davg = "depth-average")
 
 
 ################################################################################
 ##
-## Processing loop
-##
-## Process one variable at a time
-## outer loop = variable
-## inner loop = file/year
+## Processing loop: outer = variable, inner = year. Process one depth band set
+## per variable; only the depths in `depths` are written.
 
 ## -----------------------------------------------------------------------------
-## Outer loop - variable
+## Print out update to self
 
+cat("Variables selected:", paste(variables, collapse = ", "), "\n")
+cat("Depths selected:   ", paste(depths, collapse = ", "), "\n")
+cat("Output format:     ", out_format, "\n")
+cat("Years processed:   ", year_min, "-", year_max, "\n")
+
+## Run loop
 for (v in variables) {
-  
-  #  v <- variables[1]  ## Test one variable
-  
+
   cat("\n====================================================\n")
-  cat("Variable:", v, "\n")
-  cat("Run mode:", run_mode, "\n")
-  cat("Output format:", out_format, "\n")
-  cat("Years processed:", n_years, "\n")
-  
-  bott_files <- character(n_years)
-  surf_files <- character(n_years)
-  davg_files <- character(n_years)
-  
+  cat("Variable:", v, "| Years processed:", n_years, "\n")
+
+  ## Track yearly chunk paths per depth (only for depths we are writing)
+  chunk_files <- setNames(
+    lapply(depths, function(d) character(n_years)),
+    depths
+  )
+
   ## ---------------------------------------------------------------------------
-  ## Inner loop - read each year file
-  ## Process each year and write yearly chunks
-  
+  ## Inner loop - read each year, split depths, write yearly chunks
+
   for (i in seq_len(n_years)) {
-    
+
     this_file <- file_tbl$file[i]
     this_year <- file_tbl$year[i]
-    
+
     cat("  Year:", this_year, "\n")
-    
-    ## Read variable
+
     rr <- quiet_rast(this_file, v)
-    
-    ## Flip vertically
+
+    ## Keep the model grid north-up. build_regrid_index() applies the same flip.
     rr <- flip(rr, direction = "vertical")
-    
-    ## Check expected structure
+
     if (nlyr(rr) %% 3 != 0) {
       stop("Variable ", v, " in year ", this_year,
            " does not have a layer count divisible by 3.")
     }
-    
-    ## Split depths
-    bott <- rr[[seq(1, nlyr(rr), by = 3)]]
-    surf <- rr[[seq(2, nlyr(rr), by = 3)]]
-    davg <- rr[[seq(3, nlyr(rr), by = 3)]]
-    
-    ## Build dates
+
+    ## Depth bands are interleaved: bott, surf, davg, bott, surf, davg, ...
+    band_offset <- c(bott = 1, surf = 2, davg = 3)
+
     dates_i <- seq.Date(
-      from = as.Date(sprintf("%s-01-01", this_year)),
-      by = "day",
-      length.out = nlyr(bott)
+      from       = as.Date(sprintf("%s-01-01", this_year)),
+      by         = "day",
+      length.out = nlyr(rr) / 3
     )
-    
-    ## Assign names and time
-    names(bott) <- paste0(v, "_bott_", format(dates_i, "%Y%m%d"))
-    names(surf) <- paste0(v, "_surf_", format(dates_i, "%Y%m%d"))
-    names(davg) <- paste0(v, "_davg_", format(dates_i, "%Y%m%d"))
-    
-    time(bott) <- dates_i
-    time(surf) <- dates_i
-    time(davg) <- dates_i
-    
-    ## Yearly output files
-    bott_file <- file.path(tmp_dir, paste0(v, "_bott_", this_year, tmp_ext))
-    surf_file <- file.path(tmp_dir, paste0(v, "_surf_", this_year, tmp_ext))
-    davg_file <- file.path(tmp_dir, paste0(v, "_davg_", this_year, tmp_ext))
-    
-    ## Write yearly chunks
-    write_yearly_chunk(
-      r = bott,
-      filename = bott_file,
-      format_out = ifelse(tmp_ext == ".tif", "TIFF", "NC"),
-      varname_out = paste0(v, "_bott"),
-      longname_out = paste0(v, " bottom")
-    )
-    
-    write_yearly_chunk(
-      r = surf,
-      filename = surf_file,
-      format_out = ifelse(tmp_ext == ".tif", "TIFF", "NC"),
-      varname_out = paste0(v, "_surf"),
-      longname_out = paste0(v, " surface")
-    )
-    
-    write_yearly_chunk(
-      r = davg,
-      filename = davg_file,
-      format_out = ifelse(tmp_ext == ".tif", "TIFF", "NC"),
-      varname_out = paste0(v, "_davg"),
-      longname_out = paste0(v, " depth-average")
-    )
-    
-    bott_files[i] <- bott_file
-    surf_files[i] <- surf_file
-    davg_files[i] <- davg_file
-    
-    ## Clean up
-    rm(rr, bott, surf, davg)
+
+    for (d in depths) {
+
+      rd <- rr[[seq(band_offset[[d]], nlyr(rr), by = 3)]]
+
+      names(rd)       <- paste0(v, "_", d, "_", format(dates_i, "%Y%m%d"))
+      terra::time(rd) <- dates_i
+
+      chunk_file <- file.path(tmp_dir, paste0(v, "_", d, "_", this_year, tmp_ext))
+
+      write_stack(
+        r            = rd,
+        filename     = chunk_file,
+        format_out   = if (tmp_ext == ".tif") "TIFF" else "NC",
+        varname_out  = paste0(v, "_", d),
+        longname_out = paste0(v, " ", depth_longname[[d]])
+      )
+
+      chunk_files[[d]][i] <- chunk_file
+      rm(rd)
+    }
+
+    rm(rr)
     gc()
   }
-  
+
   ## ---------------------------------------------------------------------------
-  ## Re-open yearly chunks as file-backed stacks and combine
-  
+  ## Re-open yearly chunks as file-backed stacks, combine, write final stacks
+
   cat("  Combining yearly chunks for", v, "\n")
-  
-  bott_all <- do.call(c, lapply(bott_files, rast))
-  surf_all <- do.call(c, lapply(surf_files, rast))
-  davg_all <- do.call(c, lapply(davg_files, rast))
-  
-  ## ---------------------------------------------------------------------------
-  ## Final output files
-  
-  out_bott_tif <- file.path(out_dir_tif, paste0(v, "_bott_", year_min, "_", year_max, ".tif"))
-  out_surf_tif <- file.path(out_dir_tif, paste0(v, "_surf_", year_min, "_", year_max, ".tif"))
-  out_davg_tif <- file.path(out_dir_tif, paste0(v, "_davg_", year_min, "_", year_max, ".tif"))
-  
-  out_bott_nc <- file.path(out_dir_nc, paste0(v, "_bott_", year_min, "_", year_max, ".nc"))
-  out_surf_nc <- file.path(out_dir_nc, paste0(v, "_surf_", year_min, "_", year_max, ".nc"))
-  out_davg_nc <- file.path(out_dir_nc, paste0(v, "_davg_", year_min, "_", year_max, ".nc"))
-  
-  ## ---------------------------------------------------------------------------
-  ## Write final stacks based on user choice
-  
-  if (out_format %in% c("TIFF", "BOTH")) {
-    
-    write_final_stack(
-      r = bott_all,
-      filename = out_bott_tif,
-      format_out = "TIFF",
-      varname_out = paste0(v, "_bott"),
-      longname_out = paste0(v, " bottom")
-    )
-    
-    write_final_stack(
-      r = surf_all,
-      filename = out_surf_tif,
-      format_out = "TIFF",
-      varname_out = paste0(v, "_surf"),
-      longname_out = paste0(v, " surface")
-    )
-    
-    write_final_stack(
-      r = davg_all,
-      filename = out_davg_tif,
-      format_out = "TIFF",
-      varname_out = paste0(v, "_davg"),
-      longname_out = paste0(v, " depth-average")
-    )
-    
-    cat("  Wrote TIFF:\n")
-    cat("   ", basename(out_bott_tif), "\n")
-    cat("   ", basename(out_surf_tif), "\n")
-    cat("   ", basename(out_davg_tif), "\n")
+
+  for (d in depths) {
+
+    d_all <- do.call(c, lapply(chunk_files[[d]], rast))
+
+    varname_out  <- paste0(v, "_", d)
+    longname_out <- paste0(v, " ", depth_longname[[d]])
+    stem         <- paste0(v, "_", d, "_", year_min, "_", year_max)
+
+    if (out_format %in% c("NC", "BOTH")) {
+      out_nc <- file.path(out_dir_nc, paste0(stem, ".nc"))
+      write_stack(d_all, out_nc, "NC", varname_out, longname_out)
+      cat("   Wrote NC:  ", basename(out_nc), "\n")
+    }
+
+    if (out_format %in% c("TIFF", "BOTH")) {
+      out_tif <- file.path(out_dir_tif, paste0(stem, ".tif"))
+      write_stack(d_all, out_tif, "TIFF", varname_out, longname_out)
+      cat("   Wrote TIFF:", basename(out_tif), "\n")
+    }
+
+    rm(d_all)
+    gc()
   }
-  
-  if (out_format %in% c("NC", "BOTH")) {
-    
-    write_final_stack(
-      r = bott_all,
-      filename = out_bott_nc,
-      format_out = "NC",
-      varname_out = paste0(v, "_bott"),
-      longname_out = paste0(v, " bottom")
-    )
-    
-    write_final_stack(
-      r = surf_all,
-      filename = out_surf_nc,
-      format_out = "NC",
-      varname_out = paste0(v, "_surf"),
-      longname_out = paste0(v, " surface")
-    )
-    
-    write_final_stack(
-      r = davg_all,
-      filename = out_davg_nc,
-      format_out = "NC",
-      varname_out = paste0(v, "_davg"),
-      longname_out = paste0(v, " depth-average")
-    )
-    
-    cat("  Wrote NC:\n")
-    cat("   ", basename(out_bott_nc), "\n")
-    cat("   ", basename(out_surf_nc), "\n")
-    cat("   ", basename(out_davg_nc), "\n")
-  }
-  
-  rm(bott_all, surf_all, davg_all)
-  gc()
 }
 
-## Note: Ok to ignore Warning message: [rast] unknown calendar (assuming standard): gregorian_proleptic 
-## The NetCDF file probably uses a proleptic Gregorian calendar, which is common in ocean models and 
-## simply means the modern Gregorian calendar extended backward in time. (docs.unidata.ucar.edu) 
-## terra is just warning that it is assuming the normal calendar.
+## Note: Ok to ignore Warning: [rast] unknown calendar (assuming standard):
+## gregorian_proleptic -- terra just assumes the standard Gregorian calendar.
 ##
-## Note: Ok to ignore Warning message: vobjtovarid4: ... dimension named x BUT this dimension HAS NO DIMVAR!
-## It means the NetCDF file is not using simple 1-D x/y coordinate variables, so georeferencing is nonstandard.
-## The raster currently represents model space, not geographic space. It's a curvilinear grid, common in ocean models.
-## The exact longitude and latitude of the 336x564 points is stored inside the variable longitude, latitude.”
-## From the metadata:
-## 336 × 564 = model grid
-## x,y = grid indices
-## longitude[y,x] = real coordinate
-## latitude[y,x]  = real coordinate
+## Note: Ok to ignore Warning: vobjtovarid4: ... dimension named x has no dimvar.
+## The CBEFS grid is curvilinear (x,y are grid indices; the real coordinates live
+## in the longitude/latitude variables). We keep these stacks in model space on
+## purpose and georeference later via the lon/lat arrays. See cbefs-helpers.R.
