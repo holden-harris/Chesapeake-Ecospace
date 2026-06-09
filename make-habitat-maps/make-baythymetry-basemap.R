@@ -11,7 +11,13 @@ lon2 <- -75.55   ## easternmost lon
 lat1 <-  36.7    ## southernmost lat
 lat2 <-  39.65    ## northernmost lat
 
-## 
+## Latitude extent: 39.65 − 36.70 = 2.95°
+## Longitude extent: −75.55 − (−77.40) = 1.85°
+## Using the midpoint latitude (38.175°) to correct for meridian convergence:
+##  - Height: 2.95° × 111.32 km/° = 328.4 km
+##  - Width: 1.85° × 111.32 × cos(38.175°) = 1.85 × 87.45 = 161.8 km
+## Area ≈ 328.4 × 161.8 ≈ 53,120 km²
+
 ## Resolution is in arc-minutes; 1' ≈ ~1–2 km depending on latitude
 bathy_raw <- getNOAA.bathy(
   lon1 = lon1,
