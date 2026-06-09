@@ -10,7 +10,7 @@
 ## (no projection reconstruction). The source->basemap cell index is built ONCE
 ## from a raw CBEFS file and reused for every variable/depth/layer.
 ##
-## Run order: process-CBEFS.R -> aggregate-daily-to-monthly.R -> THIS
+## Run order: process-CBEFS.R -> THIS
 ## -----------------------------------------------------------------------------
 
 rm(list = ls())
@@ -18,9 +18,7 @@ rm(list = ls())
 library(terra)
 source("./make-environmental-drivers/cbefs-helpers.R")
 
-terra_tmp <- "./terra-temp"
-dir.create(terra_tmp, showWarnings = FALSE, recursive = TRUE)
-terraOptions(tempdir = terra_tmp, progress = 1, memfrac = 0.7)
+init_terra()  ## shared terra temp dir + progress + memfrac (see cbefs-helpers.R)
 
 ## -----------------------------------------------------------------------------
 ## User settings
@@ -70,22 +68,18 @@ cat("Basemap cells receiving >=1 source cell:",
 ## -----------------------------------------------------------------------------
 ## Loop monthly NC files -> regrid -> write ASCII
 
-monthly_files <- list.files(dir_in, pattern = "\\.nc$", full.names = TRUE)
-if (length(monthly_files) == 0) {
-  stop("No monthly .nc files in ", dir_in,
-       ". Run aggregate-daily-to-monthly.R first.")
-}
+monthly_files <- list_monthly_nc(dir_in)
 
 cat("\nMonthly NC files to process:\n"); print(basename(monthly_files))
 
 for (f in monthly_files) {
 
-  ## prefix = "<var>_<depth>" (strip trailing _<yr>_<yr>_monthly_mean)
-  stub   <- tools::file_path_sans_ext(basename(f))
-  prefix <- sub("_[0-9]{4}_[0-9]{4}_monthly_mean$", "", stub)
+  t_file <- Sys.time()
+  prefix <- prefix_from_monthly(f)   ## "<var>_<depth>"
 
   cat("\n------------------------------------------------------------\n")
-  cat("Processing:", prefix, "\n")
+  log_step(sprintf("Processing %s (%d of %d)", prefix,
+                   match(f, monthly_files), length(monthly_files)))
 
   x_native <- rast(f)
   dates    <- get_layer_dates(x_native)
@@ -112,6 +106,7 @@ for (f in monthly_files) {
     cat("Wrote", nlyr(x_clim), "climatology ASCII to", dir_out_clim, "\n")
   }
 
+  log_step(sprintf("Done %s in %.1fs", prefix, elapsed_s(t_file)))
   rm(x_native, x_grid); gc()
 }
 

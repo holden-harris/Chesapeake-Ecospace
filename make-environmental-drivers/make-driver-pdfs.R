@@ -8,7 +8,7 @@
 ## the climatology with climatology_12(). Frames use the native model grid, which
 ## process-CBEFS.R keeps north-up.
 ##
-## Run order: process-CBEFS.R -> aggregate-daily-to-monthly.R -> THIS
+## Run order: process-CBEFS.R -> THIS
 ## -----------------------------------------------------------------------------
 
 rm(list = ls())
@@ -18,9 +18,7 @@ library(tools)
 library(viridisLite)
 source("./make-environmental-drivers/cbefs-helpers.R")
 
-terra_tmp <- "./terra-temp"
-dir.create(terra_tmp, showWarnings = FALSE, recursive = TRUE)
-terraOptions(tempdir = terra_tmp, progress = 1, memfrac = 0.7)
+init_terra()  ## shared terra temp dir + progress + memfrac (see cbefs-helpers.R)
 
 ## -----------------------------------------------------------------------------
 ## User settings
@@ -31,57 +29,33 @@ dir.create(dir_out, showWarnings = FALSE, recursive = TRUE)
 
 n_cols <- 100
 
-## Per-prefix plotting style; unmatched prefixes fall back to default_style.
-style_tbl <- data.frame(
-  prefix          = c("temperature_davg", "salinity_bott", "NO3_surf",  "diss_o2_bott"),
-  plot_label      = c("Avg temperature",  "Bottom salinity", "Surface nitrate", "Bottom DO"),
-  units           = c("degC",             "PSU",           "mmol N/m³", "mg O₂ L⁻¹"),
-  palette         = c("Heat",             "viridis",       "Purples",   "YlGnBu"),
-  reverse_palette = c(TRUE,               FALSE,           FALSE,       FALSE),
-  stringsAsFactors = FALSE
-)
-default_style <- list(plot_label = NULL, units = "", palette = "viridis",
-                      reverse_palette = FALSE)
+## Per-variable styling (label/units/palette) is shared with the GIF script via
+## cbefs-helpers.R::cbefs_var_styles / get_var_style().
 
 ## -----------------------------------------------------------------------------
 ## Loop monthly NC files
 
-monthly_files <- list.files(dir_in, pattern = "\\.nc$", full.names = TRUE)
-if (length(monthly_files) == 0) {
-  stop("No monthly .nc files in ", dir_in,
-       ". Run aggregate-daily-to-monthly.R first.")
-}
+monthly_files <- list_monthly_nc(dir_in)
 
 cat("\nMonthly NC files to plot:\n"); print(basename(monthly_files))
 
 for (f in monthly_files) {
 
-  stub   <- file_path_sans_ext(basename(f))
-  prefix <- sub("_[0-9]{4}_[0-9]{4}_monthly_mean$", "", stub)
+  prefix <- prefix_from_monthly(f)
 
-  st <- style_tbl[style_tbl$prefix == prefix, ]
-  if (nrow(st) == 1) {
-    plot_label <- st$plot_label; units_lab <- st$units
-    pal_name   <- st$palette;    rev_pal   <- st$reverse_palette
-  } else {
-    plot_label <- prefix; units_lab <- default_style$units
-    pal_name   <- default_style$palette; rev_pal <- default_style$reverse_palette
-  }
+  st         <- get_var_style(prefix)
+  plot_label <- st$plot_label; units_lab <- st$units
+  pal_name   <- st$palette;    rev_pal   <- st$reverse_palette
 
   cat("\n------------------------------------------------------------\n")
-  cat("PDF for:", prefix, "\n")
+  log_step(sprintf("PDF for %s", prefix))
 
   x_month <- rast(f)
   dates   <- get_layer_dates(x_month)
   x_clim  <- climatology_12(x_month, dates = dates)
 
   ## Consistent color scale across the 12 panels
-  x_clim <- setMinMax(x_clim)
-  zlim   <- range(minmax(x_clim), na.rm = TRUE)
-  if (any(!is.finite(zlim))) {
-    zlim <- c(global(x_clim, "min", na.rm = TRUE)[1, 1],
-              global(x_clim, "max", na.rm = TRUE)[1, 1])
-  }
+  zlim <- robust_zlim(x_clim)
 
   plot_cols <- get_plot_cols(n_cols, pal_name, rev_pal)
 

@@ -25,6 +25,43 @@ suppressPackageStartupMessages({
 CBEFS_STERE_CRS <- "+proj=stere +lon_0=283.54 +lat_0=37.75 +units=m"
 
 ## -----------------------------------------------------------------------------
+## Runtime environment + diagnostics
+##
+## Shared terra setup (one temp location for the whole module) and lightweight
+## progress logging. log_step() flushes stdout so the heartbeat shows up live
+## even under Rscript with redirected output (where flush.console() is a no-op).
+
+init_terra <- function(tempdir = "./make-environmental-drivers/terra-temp",
+                       progress = 1, memfrac = 0.7) {
+  dir.create(tempdir, showWarnings = FALSE, recursive = TRUE)
+  terra::terraOptions(tempdir = tempdir, progress = progress, memfrac = memfrac)
+  invisible(tempdir)
+}
+
+## Free physical RAM in MB (Windows via wmic; NA on other platforms / failure).
+free_ram_mb <- function() {
+  out <- tryCatch(
+    system2("wmic", c("OS", "get", "FreePhysicalMemory", "/value"),
+            stdout = TRUE, stderr = FALSE),
+    error = function(e) character(0)
+  )
+  kb <- suppressWarnings(as.numeric(sub(".*=", "",
+          grep("FreePhysicalMemory", out, value = TRUE)[1])))
+  if (length(kb) && is.finite(kb)) round(kb / 1024) else NA_real_
+}
+
+## Seconds elapsed since a Sys.time() stamp.
+elapsed_s <- function(since) as.numeric(difftime(Sys.time(), since, units = "secs"))
+
+## Timestamped, RAM-tagged progress line, flushed for live display.
+log_step <- function(...) {
+  ram     <- free_ram_mb()
+  ram_txt <- if (is.na(ram)) "" else sprintf(" | RAM %d MB", as.integer(ram))
+  cat(sprintf("[%s%s] %s\n", format(Sys.time(), "%H:%M:%S"), ram_txt, paste0(...)))
+  flush(stdout())
+}
+
+## -----------------------------------------------------------------------------
 ## build_regrid_index()
 ##
 ## Build a one-time mapping from CBEFS native grid cells -> Ecospace basemap
@@ -123,6 +160,28 @@ regrid_to_basemap <- function(x_native, basemap, ri) {
   }
 
   terra::mask(out, basemap)
+}
+
+## -----------------------------------------------------------------------------
+## Monthly-NC file helpers
+##
+## The monthly-mean stacks produced by process-CBEFS (write_monthly_stack) are
+## named "<var>_<depth>_<yr>_<yr>_monthly_mean.nc". These two helpers list them
+## (with a clear error pointing at the producer) and recover the "<var>_<depth>"
+## prefix -- shared by the ASCII / GIF / PDF scripts.
+
+list_monthly_nc <- function(dir_in, full.names = TRUE) {
+  f <- list.files(dir_in, pattern = "\\.nc$", full.names = full.names)
+  if (length(f) == 0) {
+    stop("No monthly .nc files in ", dir_in,
+         ". Run process-CBEFS.R with write_monthly_stack <- TRUE first.")
+  }
+  f
+}
+
+prefix_from_monthly <- function(path) {
+  stub <- tools::file_path_sans_ext(basename(path))
+  sub("_[0-9]{4}_[0-9]{4}_monthly_mean$", "", stub)
 }
 
 ## -----------------------------------------------------------------------------
@@ -227,7 +286,7 @@ write_ascii_layers <- function(x, out_dir, fnames, naflag = -9999) {
     terra::writeRaster(
       x[[i]],
       filename  = out[i],
-      filetype  = "ascii",
+      filetype  = "AAIGrid",   ## ESRI/Arc-Info ASCII grid (.asc); "ascii" is not a valid driver
       overwrite = TRUE,
       NAflag    = naflag
     )
@@ -267,4 +326,53 @@ get_plot_cols <- function(n_cols, pal_name, reverse_palette = FALSE) {
   }
 
   cols
+}
+
+## -----------------------------------------------------------------------------
+## robust_zlim()
+##
+## Common color-scale limits across ALL layers of x, used so every GIF frame /
+## climatology panel shares one scale. Tries setMinMax()/minmax() first, falls
+## back to global() if that yields non-finite bounds.
+
+robust_zlim <- function(x) {
+  x    <- terra::setMinMax(x)
+  zlim <- suppressWarnings(range(terra::minmax(x), na.rm = TRUE))
+  if (any(!is.finite(zlim))) {
+    zlim <- c(terra::global(x, "min", na.rm = TRUE)[1, 1],
+              terra::global(x, "max", na.rm = TRUE)[1, 1])
+  }
+  if (any(!is.finite(zlim))) {
+    stop("robust_zlim(): could not determine a finite plotting range.")
+  }
+  zlim
+}
+
+## -----------------------------------------------------------------------------
+## Per-variable plotting style (single source of truth)
+##
+## Canonical label / units / palette per "<var>_<depth>" prefix, shared by the
+## GIF and PDF scripts so the two never drift apart. get_var_style() falls back
+## to a viridis default (prefix as label) for any unlisted variable.
+
+cbefs_var_styles <- data.frame(
+  prefix          = c("temperature_davg", "salinity_bott",   "NO3_surf",          "diss_o2_bott"),
+  plot_label      = c("Avg temperature",  "Bottom salinity", "Surface nitrate",   "Bottom DO"),
+  units           = c("degC",             "PSU",             "mmol N/m³",     "mg O₂ L⁻¹"),
+  palette         = c("Heat",             "viridis",         "Purples",           "YlGnBu"),
+  reverse_palette = c(TRUE,               FALSE,             FALSE,               FALSE),
+  stringsAsFactors = FALSE
+)
+
+get_var_style <- function(prefix, styles = cbefs_var_styles) {
+  hit <- styles[styles$prefix == prefix, ]
+  if (nrow(hit) == 1) {
+    list(plot_label      = hit$plot_label,
+         units           = hit$units,
+         palette         = hit$palette,
+         reverse_palette = hit$reverse_palette)
+  } else {
+    list(plot_label = prefix, units = "", palette = "viridis",
+         reverse_palette = FALSE)
+  }
 }

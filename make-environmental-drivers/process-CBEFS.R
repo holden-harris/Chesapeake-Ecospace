@@ -8,8 +8,13 @@
 ##
 ## Input:  ./data-inputs/spatial-dynamic/CBEFS-hindcast/holdenharris_YYYY_v*.nc  (40 files, ~43 GB)
 ## Output: ./output-for-ecospace/env-drivers/CBEFS-hindcast/
-##           var-stack-NC/<var>_<depth>_<yr>_<yr>.nc    (canonical)
-##           var-stack-TIFF/<var>_<depth>_<yr>_<yr>.tif (only if out_format includes TIFF)
+##           var-stack-NC/<var>_<depth>_<yr>_<yr>.nc              (daily; write_daily_stack)
+##           var-stack-TIFF/<var>_<depth>_<yr>_<yr>.tif           (only if out_format incl. TIFF)
+##           var-stack-NC-monthly/<var>_<depth>_<yr>_<yr>_monthly_mean.nc  (write_monthly_stack)
+##
+## Monthly means are computed in-process while each year is in memory (one read
+## of each raw file), so no separate daily->monthly re-aggregation step is needed.
+## The shared monthly_mean() in cbefs-helpers.R does the per-year aggregation.
 ##
 ## Georeferencing note: the output stacks are kept in the native model grid
 ## (index space). They are NOT given a CRS here -- the curvilinear lon/lat are
@@ -26,19 +31,33 @@ rm(list = ls())
 library(terra)
 library(stringr)
 library(dplyr)
+source("./make-environmental-drivers/cbefs-helpers.R")  ## monthly_mean(), init_terra(), log_step()
 
-terraOptions(progress = 1, memfrac = 0.7)
+init_terra()  ## shared terra temp dir + progress + memfrac (see cbefs-helpers.R)
 
 
 ################################################################################
 ##
 ## User setup
 
-out_format       <- "NC"     ## Options: "NC" (canonical), "TIFF", "BOTH"
+out_format       <- "NC"     ## Options: "NC" (canonical), "TIFF", "BOTH"  (daily stack)
 run_mode         <- "TEST"   ## Options: "TEST" (salinity/bott, first 4 years), "FULL" (all)
 variables_to_run <- "ALL"    ## Options: "ALL" or specific: c("temperature","salinity")
 nc_compression   <- 2        ## NetCDF deflate level 1-9. Lower = faster writes.
 verbose_mode     <- FALSE    ## TRUE = inspect NetCDF structure before processing
+
+## Outputs to produce. Monthly means are computed IN-PROCESS from each year's
+## data while it is already in memory -- so the monthly stack never requires
+## re-reading the large combined daily file (which is chunked for storage, not
+## for time-series access, and is very slow to re-read).
+##
+## SPEED/STORAGE NOTE: the downstream Ecospace pipeline (ASCII/GIF/PDF) reads ONLY
+## the monthly stacks. The combined daily stacks are an archive (~47 GB in FULL)
+## and are the heaviest write here. If you do not need the daily archive, set
+## write_daily_stack <- FALSE to skip the per-year temp chunks and the slow
+## deflate-compressed combined write entirely.
+write_daily_stack   <- TRUE   ## combined daily NC in var-stack-NC (archive / daily analyses)
+write_monthly_stack <- TRUE   ## monthly-mean NC in var-stack-NC-monthly (feeds ASCII/GIF/PDF)
 
 depths_all <- c("bott", "surf", "davg") ## bottom, surface, and depth-averaged
 
@@ -51,11 +70,20 @@ nc_path <- "./data-inputs/spatial-dynamic/CBEFS-hindcast"
 tmp_dir_nc  <- "./output-for-ecospace/env-drivers/CBEFS-hindcast/tmp-yearly-NC"
 
 #out_dir_tif <- "./output-for-ecospace/env-drivers/CBEFS-hindcast/var-stack-TIFF"
-out_dir_nc  <- "./output-for-ecospace/env-drivers/CBEFS-hindcast/var-stack-NC"
+out_dir_nc         <- "./output-for-ecospace/env-drivers/CBEFS-hindcast/var-stack-NC"
+out_dir_nc_monthly <- "./output-for-ecospace/env-drivers/CBEFS-hindcast/var-stack-NC-monthly"
 
-dir.create(out_dir_nc, showWarnings = FALSE, recursive = TRUE)
-if (out_format %in% c("TIFF", "BOTH")) {
-  dir.create(out_dir_tif, showWarnings = FALSE, recursive = TRUE)
+if (write_daily_stack) {
+  dir.create(out_dir_nc, showWarnings = FALSE, recursive = TRUE)
+  if (out_format %in% c("TIFF", "BOTH")) {
+    dir.create(out_dir_tif, showWarnings = FALSE, recursive = TRUE)
+  }
+}
+if (write_monthly_stack) {
+  dir.create(out_dir_nc_monthly, showWarnings = FALSE, recursive = TRUE)
+}
+if (!write_daily_stack && !write_monthly_stack) {
+  stop("Nothing to do: set write_daily_stack and/or write_monthly_stack to TRUE.")
 }
 
 
@@ -76,7 +104,8 @@ if (out_format == "NC") {
 } else {
   stop("out_format must be one of: 'NC', 'TIFF', 'BOTH'")
 }
-dir.create(tmp_dir, showWarnings = FALSE, recursive = TRUE)
+## Yearly chunks are only needed when building the combined daily stack.
+if (write_daily_stack) dir.create(tmp_dir, showWarnings = FALSE, recursive = TRUE)
 
 ## -----------------------------------------------------------------------------
 ## Determine variables and depths to process
@@ -244,21 +273,27 @@ for (v in variables) {
   cat("\n====================================================\n")
   cat("Variable:", v, "| Years processed:", n_years, "\n")
 
-  ## Track yearly chunk paths per depth (only for depths we are writing)
-  chunk_files <- setNames(
-    lapply(depths, function(d) character(n_years)),
-    depths
-  )
+  ## Track yearly chunk paths per depth (only when building the daily stack)
+  chunk_files <- if (write_daily_stack)
+    setNames(lapply(depths, function(d) character(n_years)), depths) else NULL
+
+  ## Accumulate per-year monthly means per depth (computed in-process, in memory)
+  month_accum <- if (write_monthly_stack)
+    setNames(lapply(depths, function(d) vector("list", n_years)), depths) else NULL
+
+  ## Depth bands are interleaved: bott, surf, davg, bott, surf, davg, ...
+  band_offset <- c(bott = 1, surf = 2, davg = 3)
 
   ## ---------------------------------------------------------------------------
-  ## Inner loop - read each year, split depths, write yearly chunks
+  ## Inner loop - read each year, split depths, write daily chunk + month means
+
+  v_start <- Sys.time()   ## for per-variable timing / ETA in the heartbeat below
 
   for (i in seq_len(n_years)) {
 
+    t_year    <- Sys.time()
     this_file <- file_tbl$file[i]
     this_year <- file_tbl$year[i]
-
-    cat("  Year:", this_year, "\n")
 
     rr <- quiet_rast(this_file, v)
 
@@ -270,13 +305,11 @@ for (v in variables) {
            " does not have a layer count divisible by 3.")
     }
 
-    ## Depth bands are interleaved: bott, surf, davg, bott, surf, davg, ...
-    band_offset <- c(bott = 1, surf = 2, davg = 3)
-
+    n_days  <- nlyr(rr) / 3
     dates_i <- seq.Date(
       from       = as.Date(sprintf("%s-01-01", this_year)),
       by         = "day",
-      length.out = nlyr(rr) / 3
+      length.out = n_days
     )
 
     for (d in depths) {
@@ -286,52 +319,85 @@ for (v in variables) {
       names(rd)       <- paste0(v, "_", d, "_", format(dates_i, "%Y%m%d"))
       terra::time(rd) <- dates_i
 
-      chunk_file <- file.path(tmp_dir, paste0(v, "_", d, "_", this_year, tmp_ext))
+      ## (a) Daily yearly chunk (only if building the combined daily stack)
+      if (write_daily_stack) {
+        chunk_file <- file.path(tmp_dir, paste0(v, "_", d, "_", this_year, tmp_ext))
+        write_stack(
+          r            = rd,
+          filename     = chunk_file,
+          format_out   = if (tmp_ext == ".tif") "TIFF" else "NC",
+          varname_out  = paste0(v, "_", d),
+          longname_out = paste0(v, " ", depth_longname[[d]])
+        )
+        chunk_files[[d]][i] <- chunk_file
+      }
 
-      write_stack(
-        r            = rd,
-        filename     = chunk_file,
-        format_out   = if (tmp_ext == ".tif") "TIFF" else "NC",
-        varname_out  = paste0(v, "_", d),
-        longname_out = paste0(v, " ", depth_longname[[d]])
-      )
+      ## (b) Monthly means for this year/depth -- data is already in memory here,
+      ##     so this is cheap and avoids ever re-reading the big daily file. The
+      ##     shared monthly_mean() keeps the aggregation logic in one place.
+      if (write_monthly_stack) {
+        month_accum[[d]][[i]] <- monthly_mean(rd, dates_i)
+      }
 
-      chunk_files[[d]][i] <- chunk_file
       rm(rd)
     }
 
     rm(rr)
     gc()
+
+    ## Heartbeat: confirms the loop is advancing and times each year. Includes a
+    ## rough ETA from the running per-year average. log_step() flushes stdout so
+    ## the line appears live (not buffered to the end of the run).
+    avg_year <- elapsed_s(v_start) / i
+    eta_min  <- avg_year * (n_years - i) / 60
+    log_step(sprintf(
+      "%-13s year %2d/%-2d (%d): %d days x %d depth(s) | %.1fs | ETA %.1f min",
+      v, i, n_years, this_year, n_days, length(depths), elapsed_s(t_year), eta_min))
   }
 
   ## ---------------------------------------------------------------------------
-  ## Re-open yearly chunks as file-backed stacks, combine, write final stacks
+  ## Combine and write final stacks (daily and/or monthly) per depth
 
-  cat("  Combining yearly chunks for", v, "\n")
+  cat("  Writing combined stacks for", v, "\n")
 
   for (d in depths) {
-
-    d_all <- do.call(c, lapply(chunk_files[[d]], rast))
 
     varname_out  <- paste0(v, "_", d)
     longname_out <- paste0(v, " ", depth_longname[[d]])
     stem         <- paste0(v, "_", d, "_", year_min, "_", year_max)
 
-    if (out_format %in% c("NC", "BOTH")) {
-      out_nc <- file.path(out_dir_nc, paste0(stem, ".nc"))
-      write_stack(d_all, out_nc, "NC", varname_out, longname_out)
-      cat("   Wrote NC:  ", basename(out_nc), "\n")
+    ## Combined daily stack (re-open yearly chunks as a file-backed stack)
+    if (write_daily_stack) {
+      d_all <- do.call(c, lapply(chunk_files[[d]], rast))
+
+      if (out_format %in% c("NC", "BOTH")) {
+        out_nc <- file.path(out_dir_nc, paste0(stem, ".nc"))
+        write_stack(d_all, out_nc, "NC", varname_out, longname_out)
+        cat("   Wrote daily NC:   ", basename(out_nc), "\n")
+      }
+      if (out_format %in% c("TIFF", "BOTH")) {
+        out_tif <- file.path(out_dir_tif, paste0(stem, ".tif"))
+        write_stack(d_all, out_tif, "TIFF", varname_out, longname_out)
+        cat("   Wrote daily TIFF: ", basename(out_tif), "\n")
+      }
+      rm(d_all)
     }
 
-    if (out_format %in% c("TIFF", "BOTH")) {
-      out_tif <- file.path(out_dir_tif, paste0(stem, ".tif"))
-      write_stack(d_all, out_tif, "TIFF", varname_out, longname_out)
-      cat("   Wrote TIFF:", basename(out_tif), "\n")
+    ## Combined monthly stack (in-memory per-year means, ~12 layers/year)
+    if (write_monthly_stack) {
+      m_all   <- do.call(c, month_accum[[d]])
+      out_mon <- file.path(out_dir_nc_monthly, paste0(stem, "_monthly_mean.nc"))
+      write_stack(m_all, out_mon, "NC", varname_out, longname_out)
+      cat("   Wrote monthly NC: ", basename(out_mon),
+          "(", nlyr(m_all), "layers )\n")
+      rm(m_all)
     }
 
-    rm(d_all)
     gc()
   }
+
+  log_step(sprintf("%-13s complete: %d year(s) in %.1f min",
+                   v, n_years, elapsed_s(v_start) / 60))
 }
 
 ## Note: Ok to ignore Warning: [rast] unknown calendar (assuming standard):

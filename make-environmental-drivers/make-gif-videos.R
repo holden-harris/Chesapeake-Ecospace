@@ -8,7 +8,7 @@
 ## are rendered on the native model grid, which process-CBEFS.R already keeps
 ## north-up, so no display flip is needed.
 ##
-## Run order: process-CBEFS.R -> aggregate-daily-to-monthly.R -> THIS
+## Run order: process-CBEFS.R -> THIS
 ## -----------------------------------------------------------------------------
 
 rm(list = ls())
@@ -36,23 +36,14 @@ n_cols     <- 100
 
 overwrite_gif <- TRUE
 
-terra_tmp <- "./terra-temp"
-dir.create(terra_tmp, showWarnings = FALSE, recursive = TRUE)
-terraOptions(tempdir = terra_tmp, progress = 1, memfrac = 0.7)
+init_terra()  ## shared terra temp dir + progress + memfrac (see cbefs-helpers.R)
 
 ## -----------------------------------------------------------------------------
-## Which variables to animate (matched by <var>_<depth> prefix)
+## Which variables to animate (matched by <var>_<depth> prefix). Per-variable
+## styling (label/units/palette) lives in cbefs-helpers.R::cbefs_var_styles and
+## is pulled via get_var_style(), so GIF and PDF share one definition.
 
-#hcl.pals() ## Show available hcl palette names
-
-file_settings <- data.frame(
-  prefix          = c("temperature_davg", "NO3_surf",        "diss_o2_bott"),
-  plot_label      = c("Avg temperature",  "Surface nitrate", "Bottom DO"),
-  units           = c("degC",             "mmol N/m³",   "mg O₂ L⁻¹"),
-  palette         = c("Heat",             "Purples",         "YlGnBu"),
-  reverse_palette = c(TRUE,               FALSE,             FALSE),
-  stringsAsFactors = FALSE
-)
+gif_prefixes <- c("temperature_davg", "NO3_surf", "diss_o2_bott")
 
 dir.create(dir_out, showWarnings = FALSE, recursive = TRUE)
 
@@ -66,11 +57,7 @@ cat("\nRequested date range:", format(start_date), "to", format(end_date), "\n")
 ## -----------------------------------------------------------------------------
 ## Resolve a monthly NC file from a <var>_<depth> prefix
 
-available <- list.files(dir_in, pattern = "\\.nc$", full.names = TRUE)
-if (length(available) == 0) {
-  stop("No monthly .nc files in ", dir_in,
-       ". Run aggregate-daily-to-monthly.R first.")
-}
+available <- list_monthly_nc(dir_in)
 
 find_monthly_file <- function(prefix) {
   hit <- available[grepl(paste0("^", prefix, "_"), basename(available))]
@@ -87,13 +74,14 @@ gif_log <- data.frame(
 ## -----------------------------------------------------------------------------
 ## Build GIFs
 
-for (j in seq_len(nrow(file_settings))) {
+for (j in seq_along(gif_prefixes)) {
 
-  prefix          <- file_settings$prefix[j]
-  plot_label      <- file_settings$plot_label[j]
-  units_lab       <- file_settings$units[j]
-  pal_name        <- file_settings$palette[j]
-  reverse_palette <- file_settings$reverse_palette[j]
+  prefix          <- gif_prefixes[j]
+  st              <- get_var_style(prefix)
+  plot_label      <- st$plot_label
+  units_lab       <- st$units
+  pal_name        <- st$palette
+  reverse_palette <- st$reverse_palette
 
   file_in <- find_monthly_file(prefix)
 
@@ -131,14 +119,9 @@ for (j in seq_len(nrow(file_settings))) {
   x_month    <- x_month[[keep]]
   frame_dates <- dates[keep]
 
-  ## --- Consistent color scale across frames ---------------------------------
-  x_month <- setMinMax(x_month)
-  zlim    <- round(range(minmax(x_month), na.rm = TRUE))
-  if (any(!is.finite(zlim))) {
-    zlim <- c(global(x_month, "min", na.rm = TRUE)[1, 1],
-              global(x_month, "max", na.rm = TRUE)[1, 1])
-  }
-  if (any(!is.finite(zlim)) || zlim[1] == zlim[2]) {
+  ## --- Consistent color scale across frames (rounded for a tidy legend) -----
+  zlim <- round(robust_zlim(x_month))
+  if (zlim[1] == zlim[2]) {
     stop("Could not determine a valid plotting range for: ", prefix)
   }
 
