@@ -1,3 +1,16 @@
+## #############################################################################
+## DEPRECATED (kept for reference / QC only).
+##
+## This single-variable bottom-salinity prototype is superseded by:
+##   make-ecospace-ascii-drivers.R  (all 15 var x depth, correct lon/lat regrid)
+##   make-gif-videos.R              (animations from the monthly NC)
+##
+## Its align_to_basemap() resampled index-space onto the degree-extent basemap
+## (both rasters had empty CRS), which is geographically wrong. The replacement
+## regrids via the stored longitude/latitude arrays. Delete this file once the
+## new pipeline has been verified against real data.
+## #############################################################################
+
 ## -----------------------------------------------------------------------------
 ## CBEFS bottom salinity test
 ## Daily stack -> Ecospace basemap grid -> monthly ASCII + GIF
