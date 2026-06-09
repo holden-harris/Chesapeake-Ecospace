@@ -128,6 +128,9 @@ tab <- rbind(
   summ(depth_rast4, "depth_rast4 (fact=4)")
 ); print(tab)
 
+##                 Raster    Lon_deg    Lat_deg  Long_sec   Lat_sec     dx_m     dy_m    dx_km    dy_km     Cell_km     sq_km
+#    depth_rast2 (fact=2) 0.03325413 0.03314286 119.71488 119.31429 2910.123 3689.463 2.910123 3.689463 2.91 × 3.69 10.736790
+
 ## Compare plots
 par(mfrow=c(2,2))
 plot(depth_rast,  colNA='gray', main=paste0(round(tab$sq_km[1]), " sq. km | ", dim(depth_rast)[1],'x',dim(depth_rast)[2]))
