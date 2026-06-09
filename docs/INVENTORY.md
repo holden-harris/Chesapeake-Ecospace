@@ -44,11 +44,14 @@ This repository builds all spatial and environmental inputs required to run a Ch
 
 | Script | Purpose | Reads | Writes | Pipeline step |
 |--------|---------|-------|--------|---------------|
-| `make-climatology-maps.R` | Reads Bay Atlas climatology NetCDF; builds 12-month stacks for 5 variables; reprojects to basemap; writes monthly ASC files | `data-inputs/spatial-dynamic/CBEFS-climatology/ches-clim-atlas-vims.nc` (gitignored); basemap ASC | `output-for-ecospace/env-drivers/ches-atlas-climatology/<var>/<var>_<Mon>.asc` (60 files); PNG 12-panel figures | **Step 3 — run once** |
-| `process-CBEFS.R` | **Primary CBEFS processor.** Reads 40 yearly CBEFS NetCDF files; splits each variable into 3 depth bands (`_bott`, `_surf`, `_davg`); combines into multi-year stacks. User controls: `out_format` (TIFF/NC/BOTH), `run_mode` (TEST/FULL), `variables_to_run` | `data-inputs/spatial-dynamic/CBEFS-hindcast/holdenharris_YYYY_v*.nc` (40 files) | `output-for-ecospace/env-drivers/CBEFS-hindcast/var-stack-NC/<var>_<depth>_1985_2024.nc` (15 files); same in `var-stack-TIFF/` if TIFF format selected | **Step 4 — long-running** (~hours in FULL mode) |
-| `aggregate-daily-stacks-to-monthly.R` | Aggregates daily NC stacks from Step 4 to monthly means using `tapp()`; writes one monthly NC per input file; logs processing metadata to CSV | `output-for-ecospace/env-drivers/CBEFS-hindcast/var-stack-NC/*.nc` | `output-for-ecospace/env-drivers/CBEFS-hindcast/var-stack-NC-monthly/<var>_<depth>_..._monthly_mean.nc`; timestamped CSV log | **Step 5** (requires Step 4 NC output) |
-| `make-gif-videos.R` | Aggregates selected daily stacks to monthly TIFFs; renders GIF animations with configurable color palettes and year range. User controls: `start_year`, `num_years`, `file_settings` table, `overwrite_*` flags | `output-for-ecospace/env-drivers/CBEFS-hindcast/var-stack-NC/*.nc` | `make-environmental-drivers/GIFs/<var_stub>/<var>_monthly_mean_<yr>_<yr>.tif`; `<var>_xM_<yr>_<yr>.gif` + frame PNGs (not tracked in git) | **Visualization only** — optional |
-| `make-monthly-maps.R` | Single-variable daily→monthly pipeline with basemap alignment; writes monthly ASC grids and a GIF. Focused on bottom salinity testing | `output-for-ecospace/env-drivers/CBEFS-hindcast/var-stack-NC/salinity_bott_*.nc`; basemap ASC | `output-for-ecospace/env-drivers/CBEFS-hindcast/bottom-salinity-test/ASCII-monthly/*.asc`; `GIF/bottom_salinity_monthly.gif` | **Visualization / QC** — single variable |
+| `cbefs-helpers.R` | **Shared helper module** (sourced, not run). lon/lat-based regrid index + many-to-one mean aggregation to the basemap, monthly/climatology aggregation, date recovery, ASCII writer, palette builder | — | — | **Sourced by the ASCII / GIF / PDF scripts** |
+| `process-CBEFS.R` | **Primary CBEFS processor.** Reads 40 yearly CBEFS NetCDF files; splits each variable into 3 depth bands (`_bott`, `_surf`, `_davg`); combines into multi-year NC stacks (kept in native model grid). User controls: `out_format` (**NC** default / TIFF / BOTH), `run_mode` (TEST = salinity/bott/4 yr; FULL = all), `variables_to_run`, `nc_compression` | `data-inputs/spatial-dynamic/CBEFS-hindcast/holdenharris_YYYY_v*.nc` (40 files) | `output-for-ecospace/env-drivers/CBEFS-hindcast/var-stack-NC/<var>_<depth>_<yr>_<yr>.nc` (15 files in FULL); `var-stack-TIFF/` only if TIFF requested | **Step 4 — long-running** (~hours in FULL mode) |
+| `aggregate-daily-to-monthly.R` | **Sole** daily→monthly step. Aggregates daily NC stacks to monthly means using `tapp()` (native grid); writes one monthly NC per input file; CSV log | `output-for-ecospace/env-drivers/CBEFS-hindcast/var-stack-NC/*.nc` | `output-for-ecospace/env-drivers/CBEFS-hindcast/var-stack-NC-monthly/<var>_<depth>_..._monthly_mean.nc`; timestamped CSV log | **Step 5** (requires Step 4 NC output) |
+| `make-ecospace-ascii-drivers.R` | **Final Ecospace drivers.** Builds the lon/lat regrid index once, regrids every monthly stack to the 88×56 basemap, writes the full monthly ASCII time series **and** the 12-month climatology, per `<var>_<depth>` | `var-stack-NC-monthly/*.nc`; a raw CBEFS file (lon/lat); basemap ASC | `output-for-ecospace/env-drivers/CBEFS-hindcast/ASCII-monthly/<var>_<depth>_YYYY_MM.asc`; `ASCII-climatology/<var>_<depth>_<Mon>.asc` | **Step 6 — key deliverable** |
+| `make-gif-videos.R` | Renders GIF animations from the **monthly** NC (no re-aggregation). User controls: `start_year`, `num_years`, `file_settings` (prefix/label/units/palette), `overwrite_gif` | `var-stack-NC-monthly/*.nc` | `make-environmental-drivers/GIFs/<prefix>/<prefix>_monthly_<yr>_<yr>.gif` + frame PNGs (not in git) | **Visualization** — optional |
+| `make-driver-pdfs.R` | Vector PDF plots: per `<var>_<depth>`, a 3×4 monthly-climatology panel grid | `var-stack-NC-monthly/*.nc` | `make-environmental-drivers/PDFs/<prefix>_climatology.pdf` | **Visualization** — optional |
+| `make-climatology-maps.R` | Separate Bay Atlas pipeline. Reads Bay Atlas climatology NetCDF; builds 12-month stacks; reprojects/resamples to basemap; writes monthly ASC + PNG panels | `data-inputs/spatial-dynamic/CBEFS-climatology/ches-clim-atlas-vims.nc` (gitignored); basemap ASC | `output-for-ecospace/env-drivers/ches-atlas-climatology/<var>/<var>_<Mon>.asc` (60 files); PNG figures | **Independent** — run once |
+| `make-monthly-maps.R` | **DEPRECATED** single-variable bottom-salinity prototype (geographically incorrect index-space resample). Superseded by `make-ecospace-ascii-drivers.R`; delete after verification | — | — | **Deprecated** |
 
 ### make-preference-functions/
 
@@ -89,16 +92,19 @@ This repository builds all spatial and environmental inputs required to run a Ch
 ╠══════════════════════════════════════════════════════╣
 ║  data-inputs/spatial-dynamic/CBEFS-hindcast/*.nc     ║
 ║    (~43 GB, 40 files)                                ║
-║    → process-CBEFS.R  (run_mode = "FULL")            ║
+║    → process-CBEFS.R  (run_mode = "FULL", NC only)   ║
 ║    → var-stack-NC/<var>_<depth>_1985_2024.nc  (15)   ║
-║        → aggregate-daily-stacks-to-monthly.R         ║
+║        → aggregate-daily-to-monthly.R                ║
 ║        → var-stack-NC-monthly/*_monthly_mean.nc (15) ║
-║        → [optional] make-gif-videos.R                ║
-║            → GIFs/<var>/*.gif  (not in git)          ║
+║            → make-ecospace-ascii-drivers.R           ║
+║              → ASCII-monthly/<var>_<depth>_YYYY_MM.asc║
+║              → ASCII-climatology/<var>_<depth>_<Mon>.asc║
+║            → [optional] make-gif-videos.R → GIFs/    ║
+║            → [optional] make-driver-pdfs.R → PDFs/   ║
 ║                                                      ║
 ║  data-inputs/spatial-dynamic/CBEFS-climatology/      ║
 ║    ches-clim-atlas-vims.nc  (gitignored)             ║
-║    → make-climatology-maps.R                         ║
+║    → make-climatology-maps.R  (independent)          ║
 ║    → ches-atlas-climatology/<var>/<var>_<Mon>.asc    ║
 ╚══════════════════════════════════════════════════════╝
 

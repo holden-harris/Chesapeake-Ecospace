@@ -13,13 +13,15 @@ Scripts are independent entry points (no `source()` calls). Run them in pipeline
 2. `habitat/make-jurisdictional-maps.R` — creates binary MD/VA/Potomac ASC grids (requires basemap from step 1)
 
 ### Pipeline B — Environmental Drivers (long-running, requires ~43 GB CBEFS data)
-3. `environmental-drivers/make-climatology-maps.R` — Bay Atlas climatology → monthly ASC files (5 variables × 12 months)
-4. `environmental-drivers/process-CBEFS.R` — CBEFS hindcasts (1985–2024) → daily NC/TIFF stacks (set `run_mode <- "TEST"` for a 4-year trial run)
-5. `environmental-drivers/aggregate-daily-stacks-to-monthly.R` — daily NC stacks → monthly mean NC stacks
+3. `environmental-drivers/process-CBEFS.R` — CBEFS hindcasts (1985–2024) → daily NC stacks, native model grid (set `run_mode <- "TEST"` for a salinity/bottom 4-year trial; `out_format` defaults to `"NC"`)
+4. `environmental-drivers/aggregate-daily-to-monthly.R` — daily NC stacks → monthly mean NC stacks (the single daily→monthly step)
+5. `environmental-drivers/make-ecospace-ascii-drivers.R` — monthly NC → Ecospace ASCII drivers on the 88×56 grid: full monthly series + 12-month climatology (regridded via the stored lon/lat arrays; `cbefs-helpers.R` holds the shared logic)
+6. *(optional viz)* `environmental-drivers/make-gif-videos.R` → GIF animations; `make-driver-pdfs.R` → climatology PDF panels — both read the monthly NC
+7. *(independent)* `environmental-drivers/make-climatology-maps.R` — Bay Atlas climatology → monthly ASC files (5 variables × 12 months)
 
 ### Pipeline C — Species Preference Functions
-6. `preference-functions/query-env-preference-parameters.R` — queries FishBase API for species traits
-7. `preference-functions/Make-preference-functions.R` — compiles `data/derived/env-pref-parameters.csv` → logistic preference curves
+8. `preference-functions/query-env-preference-parameters.R` — queries FishBase API for species traits
+9. `preference-functions/Make-preference-functions.R` — compiles `data/derived/env-pref-parameters.csv` → logistic preference curves
 
 > **Note:** `preference-functions/query-aquamaps-data.R` (AquaMaps HSPEN query) needs rework before use — see [docs/INVENTORY.md](docs/INVENTORY.md#6-known-issues).
 
