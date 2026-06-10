@@ -3,17 +3,27 @@
 ##
 ## Shared helpers for the CBEFS -> Ecospace environmental-driver workflow.
 ## Sourced by:
-##   - make-ecospace-ascii-drivers.R
-##   - make-gif-videos.R
-##   - make-driver-pdfs.R
+##   - regrid-to-basemaps.R           (Stage 2: native stacks -> per-basemap stacks)
+##   - make-ecospace-ascii-drivers.R  (Stage 3: ASCII drivers)
+##   - make-driver-pdfs.R             (Stage 3: PDF plots)
+##   - make-gif-videos.R              (Stage 3: GIF animations)
+##   - run-environmental-drivers.R    (orchestration over the above)
 ##
 ## The core idea: CBEFS lives on a 336x564 grid that is regular in an oblique
 ## stereographic projection but curvilinear in lon/lat. Rather than reconstruct
 ## that projection (which would require guessing datum + origin), we use the
 ## exact `longitude`/`latitude` arrays stored in every NetCDF as ground truth,
 ## and build a single source-cell -> basemap-cell index that is reused for every
-## layer, variable, and depth. Source (~600 m) is ~6x finer than the Ecospace
-## grid (~3.5 km), so regridding is honest many-to-one mean aggregation.
+## layer, variable, and depth. Source (~600 m) is finer than every basemap, so
+## regridding is honest many-to-one mean aggregation.
+##
+## Pipeline (3 stages):
+##   1. process-CBEFS.R     -> native monthly stacks  (var-stack-NC-monthly/)
+##   2. regrid-to-basemaps  -> per-basemap regridded stacks, ONCE per basemap
+##                             (grid-<label>/var-stack-NC-monthly-regridded/)
+##   3. product scripts read the stack for a resolution and write ASCII / PDF /
+##      GIF into grid-<label>/...  . The native grid is resolution "F00-336x564"
+##      (PDFs + GIFs only; no regrid, no ASCII driver).
 ## -----------------------------------------------------------------------------
 
 suppressPackageStartupMessages({
@@ -375,4 +385,145 @@ get_var_style <- function(prefix, styles = cbefs_var_styles) {
     list(plot_label = prefix, units = "", palette = "viridis",
          reverse_palette = FALSE)
   }
+}
+
+## -----------------------------------------------------------------------------
+## Canonical paths
+##
+## Single source of truth for the CBEFS-hindcast output tree, so every stage
+## builds the same grid-<label>/... paths.
+
+CBEFS_OUT_ROOT          <- "./output-for-ecospace/env-drivers/CBEFS-hindcast"
+NATIVE_STACK_SUBDIR     <- "var-stack-NC-monthly"             ## Stage 1, also F00 source
+REGRIDDED_STACK_SUBDIR  <- "var-stack-NC-monthly-regridded"   ## Stage 2, per basemap
+ASCII_PRODUCT_SUBDIR    <- "ST_drivers_ASCII"                 ## spatio-temporal drivers
+BASEMAP_DIR_DEFAULT     <- "./output-for-ecospace/habitat/basemaps"
+CBEFS_RAW_DIR_DEFAULT   <- "./data-inputs/spatial-dynamic/CBEFS-hindcast"
+
+## -----------------------------------------------------------------------------
+## Resolution registry
+##
+## list_basemaps()  -> the real downsampled basemaps (F01..F04), discovered from
+##                     base-depth-map-F##-<dims>.asc files. The F## factor prefix
+##                     is REQUIRED, which excludes the legacy non-F## copy that
+##                     also lives in basemaps/ (avoids a duplicate resolution).
+## resolution_set() -> list_basemaps() with the native grid (F00-336x564, no
+##                     basemap file) prepended. This is what PDF/GIF iterate;
+##                     ASCII + regrid iterate list_basemaps() (native excluded).
+##
+## Each row: label (e.g. "F02-88x56"), dims ("88x56"), res_dir ("grid-F02-88x56"),
+## path (basemap .asc, NA for native), native (logical).
+
+list_basemaps <- function(basemap_dir = BASEMAP_DIR_DEFAULT, which = NULL) {
+
+  files <- list.files(
+    basemap_dir,
+    pattern    = "^base-depth-map-F[0-9]{2}-.*\\.asc$",
+    full.names = TRUE
+  )
+  if (length(files) == 0) {
+    stop("No basemaps matching 'base-depth-map-F##-*.asc' in ", basemap_dir, ".")
+  }
+
+  label <- sub("^base-depth-map-", "",
+               tools::file_path_sans_ext(basename(files)))  ## "F02-88x56"
+  dims  <- sub("^F[0-9]{2}-", "", label)                    ## "88x56"
+
+  out <- data.frame(
+    label = label, dims = dims, res_dir = paste0("grid-", label),
+    path = files, native = FALSE, stringsAsFactors = FALSE
+  )
+  out <- out[order(out$label), , drop = FALSE]               ## F01..F04 ascending
+  out <- .filter_resolutions(out, which)
+  rownames(out) <- NULL
+  out
+}
+
+resolution_set <- function(which = NULL, basemap_dir = BASEMAP_DIR_DEFAULT) {
+
+  native <- data.frame(
+    label = "F00-336x564", dims = "336x564", res_dir = "grid-F00-336x564",
+    path = NA_character_, native = TRUE, stringsAsFactors = FALSE
+  )
+  all <- rbind(native, list_basemaps(basemap_dir = basemap_dir))
+  all <- .filter_resolutions(all, which)
+  rownames(all) <- NULL
+  all
+}
+
+## Filter a resolution data frame by a vector of labels or dims (NULL = keep all).
+.filter_resolutions <- function(df, which) {
+  if (is.null(which)) return(df)
+  keep <- df$label %in% which | df$dims %in% which
+  if (!any(keep)) {
+    stop("No resolutions matched which = ", paste(which, collapse = ", "),
+         ". Available: ", paste(df$label, collapse = ", "), ".")
+  }
+  df[keep, , drop = FALSE]
+}
+
+## Input-stack directory for a resolution row: native stacks for F00, else the
+## per-basemap regridded stacks. `res_row` is a one-row data frame.
+stack_dir_for <- function(res_row, root = CBEFS_OUT_ROOT) {
+  if (isTRUE(res_row$native)) {
+    file.path(root, NATIVE_STACK_SUBDIR)
+  } else {
+    file.path(root, res_row$res_dir, REGRIDDED_STACK_SUBDIR)
+  }
+}
+
+## Load a basemap .asc and assign WGS84 (the .asc stores no CRS).
+load_basemap <- function(path) {
+  b <- terra::rast(path)
+  terra::crs(b) <- "EPSG:4326"
+  b
+}
+
+## Locate a raw CBEFS yearly NetCDF (any one; all share the lon/lat grid) used to
+## build the regrid index.
+find_cbefs_raw <- function(cbefs_raw_dir = CBEFS_RAW_DIR_DEFAULT) {
+  raw_files <- list.files(
+    cbefs_raw_dir,
+    pattern    = "^holdenharris_[0-9]{4}_v[0-9]{8}\\.nc$",
+    full.names = TRUE
+  )
+  if (length(raw_files) == 0) {
+    stop("No raw CBEFS NetCDF found in ", cbefs_raw_dir,
+         " (needed for longitude/latitude to build the regrid index).")
+  }
+  raw_files[1]
+}
+
+## -----------------------------------------------------------------------------
+## regrid_stack_file()
+##
+## Read one native monthly NC, regrid the whole stack onto `basemap` via the
+## precomputed index, preserve per-layer dates, and write a NetCDF to nc_out.
+## Uses writeCDF() (same writer as process-CBEFS.R) so the time dimension and
+## varname round-trip; varname is the "<var>_<depth>" prefix.
+regrid_stack_file <- function(nc_in, nc_out, basemap, ri) {
+  x_native <- terra::rast(nc_in)
+  dates    <- get_layer_dates(x_native)
+  x_grid   <- regrid_to_basemap(x_native, basemap, ri)
+  terra::time(x_grid) <- dates
+  varname  <- prefix_from_monthly(nc_out)
+  dir.create(dirname(nc_out), showWarnings = FALSE, recursive = TRUE)
+  terra::writeCDF(x_grid, filename = nc_out, overwrite = TRUE,
+                  varname = varname, longname = varname)
+  invisible(nc_out)
+}
+
+## -----------------------------------------------------------------------------
+## Orchestration guard
+##
+## Stage scripts define a function and then run it with defaults ONLY when not
+## orchestrated, so they work standalone (Rscript / RStudio Source) yet stay
+## passive when sourced by run-environmental-drivers.R (which sets the option).
+orchestrated <- function() isTRUE(getOption("cbefs.orchestrated", FALSE))
+
+## Keep only monthly NC files whose <var>_<depth> prefix is in `prefixes`
+## (NULL = keep all).
+filter_monthly_by_prefix <- function(files, prefixes = NULL) {
+  if (is.null(prefixes)) return(files)
+  files[vapply(files, function(f) prefix_from_monthly(f) %in% prefixes, logical(1))]
 }

@@ -1,73 +1,24 @@
 ## -----------------------------------------------------------------------------
-## make-driver-pdfs.R
+## make-driver-pdfs.R   (Stage 3: PDF plots)
 ##
-## Build vector PDF plots of the CBEFS environmental drivers. The fields are
-## regridded onto the 88x56 Ecospace basemap FIRST (same build_regrid_index() +
-## regrid_to_basemap() path as make-ecospace-ascii-drivers.R), so every panel is
-## on the identical grid/extent that Ecospace actually ingests -- not the native
-## 336x564 model grid. Writes TWO PDFs per <var>_<depth>:
+## Build vector PDF plots of the CBEFS environmental drivers, one set per
+## resolution. Reads the stack for each resolution (native stacks for F00, the
+## per-basemap regridded stacks for F01..F04) -- regridding already happened in
+## regrid-to-basemaps.R, so there is no regrid here. Writes TWO PDFs per
+## <var>_<depth> into grid-<label>/PDFs/:
 ##   - <prefix>_climatology.pdf     12-month climatology, 3x4 panel grid
 ##   - <prefix>_monthly_by_year.pdf one page per year, 12 month panels per page
 ##
-## Reads the precomputed MONTHLY NetCDF stacks (var-stack-NC-monthly) and derives
-## the climatology with climatology_12().
+## Plotting works on the native index-space grid (F00) as well as the basemap
+## grids, so F00 gives a full-resolution view for comparison.
 ##
-## Run order: process-CBEFS.R -> THIS
+## Run order: process-CBEFS.R -> regrid-to-basemaps.R -> THIS
 ## -----------------------------------------------------------------------------
-
-rm(list = ls())
 
 library(terra)
 library(tools)
 library(viridisLite)
 source("./make-environmental-drivers/cbefs-helpers.R")
-
-init_terra()  ## shared terra temp dir + progress + memfrac (see cbefs-helpers.R)
-
-## -----------------------------------------------------------------------------
-## User settings
-
-dir_in  <- "./output-for-ecospace/env-drivers/CBEFS-hindcast/var-stack-NC-monthly"
-dir_out <- "./make-environmental-drivers/PDFs"
-dir.create(dir_out, showWarnings = FALSE, recursive = TRUE)
-
-basemap_path  <- "./output-for-ecospace/habitat/base-depth-map-88x56.asc"
-
-## A raw CBEFS yearly file -- only its longitude/latitude arrays are used, to
-## build the regrid index. Any year works (all share the grid).
-cbefs_raw_dir <- "./data-inputs/spatial-dynamic/CBEFS-hindcast"
-
-n_cols <- 100
-
-## Per-variable styling (label/units/palette) is shared with the GIF script via
-## cbefs-helpers.R::cbefs_var_styles / get_var_style().
-
-## -----------------------------------------------------------------------------
-## Basemap + regrid index (built once, reused for every variable/depth)
-##
-## Same path as make-ecospace-ascii-drivers.R, so the PDF panels land on the
-## exact 88x56 WGS84 grid that the ASCII drivers are written on.
-
-basemap <- rast(basemap_path)
-crs(basemap) <- "EPSG:4326"   ## basemap is WGS84 degrees; the .asc stores no CRS
-
-cat("\nBasemap:\n"); print(basemap)
-
-raw_files <- list.files(
-  cbefs_raw_dir,
-  pattern = "^holdenharris_[0-9]{4}_v[0-9]{8}\\.nc$",
-  full.names = TRUE
-)
-if (length(raw_files) == 0) {
-  stop("No raw CBEFS NetCDF found in ", cbefs_raw_dir,
-       " (needed for longitude/latitude to build the regrid index).")
-}
-
-cat("\nBuilding regrid index from:", basename(raw_files[1]), "\n")
-ri <- build_regrid_index(raw_files[1], basemap, flip_vertical = TRUE)
-
-cat("Source cells mapped into basemap:", sum(!is.na(ri$idx)), "of",
-    length(ri$idx), "\n")
 
 ## -----------------------------------------------------------------------------
 ## plot_year_page(): one page of up to 12 month panels for a single year.
@@ -76,8 +27,7 @@ cat("Source cells mapped into basemap:", sum(!is.na(ri$idx)), "of",
 ## panel positions align across pages even when a year is partial. Uses a
 ## per-year color scale (zlim from that year's own months).
 
-plot_year_page <- function(x_grid, dates, yr, plot_cols, units_lab,
-                           plot_label) {
+plot_year_page <- function(x_grid, dates, yr, plot_cols, units_lab, plot_label) {
 
   yr_idx <- which(format(dates, "%Y") == yr)
   zlim   <- robust_zlim(x_grid[[yr_idx]])
@@ -102,71 +52,98 @@ plot_year_page <- function(x_grid, dates, yr, plot_cols, units_lab,
 }
 
 ## -----------------------------------------------------------------------------
-## Loop monthly NC files
+## make_driver_pdfs(): climatology + per-year PDFs for each resolution.
+##
+## Args:
+##   resolutions   resolution rows to plot (default: ALL, F00..F04). F00 reads the
+##                 native stacks; F01..F04 read their regridded stacks.
+##   prefixes      optional <var>_<depth> subset (NULL = all variables)
+make_driver_pdfs <- function(resolutions = resolution_set(),
+                             out_root    = CBEFS_OUT_ROOT,
+                             prefixes    = NULL,
+                             n_cols      = 100) {
 
-monthly_files <- list_monthly_nc(dir_in)
+  init_terra()  ## shared terra temp dir + progress + memfrac (see cbefs-helpers.R)
 
-cat("\nMonthly NC files to plot:\n"); print(basename(monthly_files))
+  for (r in seq_len(nrow(resolutions))) {
 
-for (f in monthly_files) {
+    row     <- resolutions[r, ]
+    dir_in  <- stack_dir_for(row, out_root)
+    if (!dir.exists(dir_in)) {
+      stop("Stacks not found for ", row$label, " (", dir_in,
+           "). Run process-CBEFS.R (F00) / regrid-to-basemaps.R (basemaps) first.")
+    }
+    dir_out <- file.path(out_root, row$res_dir, "PDFs")
+    dir.create(dir_out, showWarnings = FALSE, recursive = TRUE)
 
-  prefix <- prefix_from_monthly(f)
+    cat("\n============================================================\n")
+    log_step(sprintf("PDFs for %s (%s) -> %s", row$label, row$dims, dir_out))
 
-  st         <- get_var_style(prefix)
-  plot_label <- st$plot_label; units_lab <- st$units
-  pal_name   <- st$palette;    rev_pal   <- st$reverse_palette
+    monthly_files <- filter_monthly_by_prefix(list_monthly_nc(dir_in), prefixes)
 
-  cat("\n------------------------------------------------------------\n")
-  log_step(sprintf("PDF for %s", prefix))
+    for (f in monthly_files) {
 
-  x_month <- rast(f)
-  dates   <- get_layer_dates(x_month)
+      prefix <- prefix_from_monthly(f)
 
-  ## Regrid the whole monthly stack onto the 88x56 basemap in one pass, then
-  ## derive everything (climatology + per-year pages) from the regridded raster.
-  x_grid <- regrid_to_basemap(x_month, basemap, ri)
-  time(x_grid) <- dates
-  x_clim <- climatology_12(x_grid, dates = dates)
+      st         <- get_var_style(prefix)
+      plot_label <- st$plot_label; units_lab <- st$units
+      pal_name   <- st$palette;    rev_pal   <- st$reverse_palette
 
-  plot_cols <- get_plot_cols(n_cols, pal_name, rev_pal)
+      cat("\n------------------------------------------------------------\n")
+      log_step(sprintf("PDF for %s", prefix))
 
-  ## --- 12-month climatology PDF ---------------------------------------------
-  ## Consistent color scale across the 12 panels
-  zlim <- robust_zlim(x_clim)
+      x_grid <- rast(f)                 ## already on this resolution's grid
+      dates  <- get_layer_dates(x_grid)
+      time(x_grid) <- dates
+      x_clim <- climatology_12(x_grid, dates = dates)
 
-  pdf_file <- file.path(dir_out, paste0(prefix, "_climatology.pdf"))
-  pdf(pdf_file, width = 11, height = 8.5)
-  par(mfrow = c(3, 4), mar = c(2, 2, 3, 4), oma = c(0, 0, 2, 0))
+      plot_cols <- get_plot_cols(n_cols, pal_name, rev_pal)
 
-  for (i in seq_len(nlyr(x_clim))) {
-    plot(
-      x_clim[[i]],
-      main  = names(x_clim)[i],
-      col   = plot_cols,
-      range = zlim,
-      plg   = list(title = units_lab),
-      colNA = "gray85"
-    )
+      ## --- 12-month climatology PDF (consistent scale across 12 panels) -----
+      zlim <- robust_zlim(x_clim)
+
+      pdf_file <- file.path(dir_out, paste0(prefix, "_climatology.pdf"))
+      pdf(pdf_file, width = 11, height = 8.5)
+      par(mfrow = c(3, 4), mar = c(2, 2, 3, 4), oma = c(0, 0, 2, 0))
+
+      for (i in seq_len(nlyr(x_clim))) {
+        plot(
+          x_clim[[i]],
+          main  = names(x_clim)[i],
+          col   = plot_cols,
+          range = zlim,
+          plg   = list(title = units_lab),
+          colNA = "gray85"
+        )
+      }
+      mtext(paste0(plot_label, " - monthly climatology"),
+            outer = TRUE, cex = 1.1, font = 2)
+
+      dev.off()
+      cat("Wrote PDF:", pdf_file, "\n")
+
+      ## --- Per-year multi-page PDF (one page/year, 12 month panels) ---------
+      years    <- sort(unique(format(dates, "%Y")))
+      pdf_year <- file.path(dir_out, paste0(prefix, "_monthly_by_year.pdf"))
+      pdf(pdf_year, width = 11, height = 8.5)
+      par(mfrow = c(3, 4), mar = c(2, 2, 3, 4), oma = c(0, 0, 2, 0))
+
+      for (yr in years) {
+        plot_year_page(x_grid, dates, yr, plot_cols, units_lab, plot_label)
+      }
+
+      dev.off()
+      cat("Wrote PDF:", pdf_year, "(", length(years), "pages )\n")
+
+      rm(x_grid, x_clim); gc()
+    }
   }
-  mtext(paste0(plot_label, " - monthly climatology"),
-        outer = TRUE, cex = 1.1, font = 2)
 
-  dev.off()
-  cat("Wrote PDF:", pdf_file, "\n")
-
-  ## --- Per-year multi-page PDF (one page/year, 12 month panels) -------------
-  years    <- sort(unique(format(dates, "%Y")))
-  pdf_year <- file.path(dir_out, paste0(prefix, "_monthly_by_year.pdf"))
-  pdf(pdf_year, width = 11, height = 8.5)
-  par(mfrow = c(3, 4), mar = c(2, 2, 3, 4), oma = c(0, 0, 2, 0))
-
-  for (yr in years) {
-    plot_year_page(x_grid, dates, yr, plot_cols, units_lab, plot_label)
-  }
-
-  dev.off()
-  cat("Wrote PDF:", pdf_year, "(", length(years), "pages )\n")
+  cat("\n============================================================\n")
+  cat("PDF generation complete for:",
+      paste(resolutions$label, collapse = ", "), "\n")
+  invisible(out_root)
 }
 
-cat("\n============================================================\n")
-cat("PDF generation complete. Output in:", dir_out, "\n")
+## Run with defaults when invoked standalone (not when sourced by the run script).
+if (!orchestrated()) make_driver_pdfs()

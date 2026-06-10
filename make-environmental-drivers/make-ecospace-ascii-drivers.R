@@ -1,116 +1,103 @@
 ## -----------------------------------------------------------------------------
-## make-ecospace-ascii-drivers.R
+## make-ecospace-ascii-drivers.R   (Stage 3: ASCII drivers)
 ##
-## Purpose: Turn the monthly CBEFS NetCDF stacks into Ecospace ASCII drivers on
-##          the 88x56 basemap grid. Produces, per <var>_<depth>:
-##            - a full monthly time series  (.../ASCII-monthly/<var>_<depth>_YYYY_MM.asc)
-##            - a 12-month climatology       (.../ASCII-climatology/<var>_<depth>_<Mon>.asc)
+## Turn the per-basemap regridded monthly stacks (Stage 2) into Ecospace ASCII
+## drivers. Regridding already happened in regrid-to-basemaps.R, so this script
+## just reads the regridded stacks and writes ASCII -- no regrid here.
 ##
-## Regridding uses the stored CBEFS longitude/latitude arrays as ground truth
-## (no projection reconstruction). The source->basemap cell index is built ONCE
-## from a raw CBEFS file and reused for every variable/depth/layer.
+## For each basemap resolution and each <var>_<depth>, writes into a per-variable
+## folder:
+##   grid-<label>/ST_drivers_ASCII/<var>_<depth>/<var>_<depth>_YYYY_MM.asc   (monthly series)
+##   grid-<label>/ST_drivers_ASCII/<var>_<depth>/climatology/<var>_<depth>_<Mon>.asc
 ##
-## Run order: process-CBEFS.R -> THIS
+## ASCII drivers are produced for the real basemaps only (F01..F04); the native
+## grid (F00) is not an Ecospace driver. Climatology is written for reference and
+## is NOT currently wired in as an Ecospace driver.
+##
+## Run order: process-CBEFS.R -> regrid-to-basemaps.R -> THIS
 ## -----------------------------------------------------------------------------
-
-rm(list = ls())
 
 library(terra)
 source("./make-environmental-drivers/cbefs-helpers.R")
 
-init_terra()  ## shared terra temp dir + progress + memfrac (see cbefs-helpers.R)
-
 ## -----------------------------------------------------------------------------
-## User settings
+## make_ascii_drivers(): write per-variable-depth ASCII for each basemap.
+##
+## Args:
+##   resolutions       basemap rows to write (default: all real basemaps, F01..F04).
+##                     Native F00 is dropped (ASCII is an Ecospace driver).
+##   prefixes          optional <var>_<depth> subset (NULL = all variables)
+##   write_series      write the full monthly time series ASCII
+##   write_climatology write the 12-month climatology ASCII (reference only)
+make_ascii_drivers <- function(resolutions       = list_basemaps(),
+                               out_root          = CBEFS_OUT_ROOT,
+                               prefixes          = NULL,
+                               write_series      = TRUE,
+                               write_climatology = TRUE,
+                               naflag            = -9999) {
 
-dir_in   <- "./output-for-ecospace/env-drivers/CBEFS-hindcast/var-stack-NC-monthly"
-dir_base <- "./output-for-ecospace/env-drivers/CBEFS-hindcast"
+  init_terra()  ## shared terra temp dir + progress + memfrac (see cbefs-helpers.R)
 
-dir_out_monthly <- file.path(dir_base, "ASCII-monthly")
-dir_out_clim    <- file.path(dir_base, "ASCII-climatology")
+  ## ASCII is an Ecospace driver -> basemaps only; drop the native grid if present.
+  resolutions <- resolutions[!resolutions$native, , drop = FALSE]
+  if (nrow(resolutions) == 0) stop("make_ascii_drivers(): no basemap resolutions.")
 
-basemap_path <- "./output-for-ecospace/habitat/base-depth-map-88x56.asc"
+  for (r in seq_len(nrow(resolutions))) {
 
-## A raw CBEFS yearly file -- only its longitude/latitude arrays are used, to
-## build the regrid index. Any year works (all share the grid).
-cbefs_raw_dir <- "./data-inputs/spatial-dynamic/CBEFS-hindcast"
+    row    <- resolutions[r, ]
+    dir_in <- stack_dir_for(row, out_root)
+    if (!dir.exists(dir_in)) {
+      stop("Regridded stacks not found for ", row$label, " (", dir_in,
+           "). Run regrid-to-basemaps.R first.")
+    }
+    ascii_root <- file.path(out_root, row$res_dir, ASCII_PRODUCT_SUBDIR)
 
-write_series      <- TRUE   ## full monthly time series ASCII
-write_climatology <- TRUE   ## 12-month climatology ASCII
-naflag            <- -9999
+    cat("\n============================================================\n")
+    log_step(sprintf("ASCII drivers for %s (%s) -> %s",
+                     row$label, row$dims, ascii_root))
 
-## -----------------------------------------------------------------------------
-## Basemap + regrid index (built once)
+    monthly_files <- filter_monthly_by_prefix(list_monthly_nc(dir_in), prefixes)
 
-basemap <- rast(basemap_path)
-crs(basemap) <- "EPSG:4326"   ## basemap is WGS84 degrees; the .asc stores no CRS
+    for (f in monthly_files) {
 
-cat("\nBasemap:\n"); print(basemap)
+      t_file <- Sys.time()
+      prefix <- prefix_from_monthly(f)   ## "<var>_<depth>"
 
-raw_files <- list.files(
-  cbefs_raw_dir,
-  pattern = "^holdenharris_[0-9]{4}_v[0-9]{8}\\.nc$",
-  full.names = TRUE
-)
-if (length(raw_files) == 0) {
-  stop("No raw CBEFS NetCDF found in ", cbefs_raw_dir,
-       " (needed for longitude/latitude to build the regrid index).")
-}
+      cat("\n------------------------------------------------------------\n")
+      log_step(sprintf("Processing %s (%d of %d)", prefix,
+                       match(f, monthly_files), length(monthly_files)))
 
-cat("\nBuilding regrid index from:", basename(raw_files[1]), "\n")
-ri <- build_regrid_index(raw_files[1], basemap, flip_vertical = TRUE)
+      x_grid <- rast(f)                  ## already regridded to this basemap
+      dates  <- get_layer_dates(x_grid)
 
-n_in   <- sum(!is.na(ri$idx))
-cat("Source cells mapped into basemap:", n_in, "of", length(ri$idx), "\n")
-cat("Basemap cells receiving >=1 source cell:",
-    length(unique(ri$idx[!is.na(ri$idx)])), "of", ncell(basemap), "\n")
+      var_dir <- file.path(ascii_root, prefix)
 
-## -----------------------------------------------------------------------------
-## Loop monthly NC files -> regrid -> write ASCII
+      ## --- Monthly time series ASCII ----------------------------------------
+      if (write_series) {
+        fnames <- paste0(prefix, "_", format(dates, "%Y_%m"), ".asc")
+        write_ascii_layers(x_grid, var_dir, fnames, naflag = naflag)
+        cat("Wrote", nlyr(x_grid), "monthly ASCII to", var_dir, "\n")
+      }
 
-monthly_files <- list_monthly_nc(dir_in)
+      ## --- 12-month climatology ASCII (reference only) ----------------------
+      if (write_climatology) {
+        x_clim   <- climatology_12(x_grid, dates = dates)
+        clim_dir <- file.path(var_dir, "climatology")
+        fnames   <- paste0(prefix, "_", names(x_clim), ".asc")
+        write_ascii_layers(x_clim, clim_dir, fnames, naflag = naflag)
+        cat("Wrote", nlyr(x_clim), "climatology ASCII to", clim_dir, "\n")
+      }
 
-cat("\nMonthly NC files to process:\n"); print(basename(monthly_files))
-
-for (f in monthly_files) {
-
-  t_file <- Sys.time()
-  prefix <- prefix_from_monthly(f)   ## "<var>_<depth>"
-
-  cat("\n------------------------------------------------------------\n")
-  log_step(sprintf("Processing %s (%d of %d)", prefix,
-                   match(f, monthly_files), length(monthly_files)))
-
-  x_native <- rast(f)
-  dates    <- get_layer_dates(x_native)
-
-  ## Regrid all monthly layers to the basemap in one pass
-  x_grid <- regrid_to_basemap(x_native, basemap, ri)
-  time(x_grid) <- dates
-
-  cat("Regridded stack:", nlyr(x_grid), "layers ->", ncol(basemap), "x",
-      nrow(basemap), "\n")
-
-  ## --- Monthly time series ASCII --------------------------------------------
-  if (write_series) {
-    fnames <- paste0(prefix, "_", format(dates, "%Y_%m"), ".asc")
-    write_ascii_layers(x_grid, dir_out_monthly, fnames, naflag = naflag)
-    cat("Wrote", nlyr(x_grid), "monthly ASCII to", dir_out_monthly, "\n")
+      log_step(sprintf("Done %s in %.1fs", prefix, elapsed_s(t_file)))
+      rm(x_grid); gc()
+    }
   }
 
-  ## --- 12-month climatology ASCII -------------------------------------------
-  if (write_climatology) {
-    x_clim <- climatology_12(x_grid, dates = dates)
-    fnames <- paste0(prefix, "_", names(x_clim), ".asc")
-    write_ascii_layers(x_clim, dir_out_clim, fnames, naflag = naflag)
-    cat("Wrote", nlyr(x_clim), "climatology ASCII to", dir_out_clim, "\n")
-  }
-
-  log_step(sprintf("Done %s in %.1fs", prefix, elapsed_s(t_file)))
-  rm(x_native, x_grid); gc()
+  cat("\n============================================================\n")
+  cat("ASCII driver generation complete for:",
+      paste(resolutions$label, collapse = ", "), "\n")
+  invisible(out_root)
 }
 
-cat("\n============================================================\n")
-cat("ASCII driver generation complete.\n")
-if (write_series)      cat("Monthly series:  ", dir_out_monthly, "\n")
-if (write_climatology) cat("Climatology:     ", dir_out_clim, "\n")
+## Run with defaults when invoked standalone (not when sourced by the run script).
+if (!orchestrated()) make_ascii_drivers()
