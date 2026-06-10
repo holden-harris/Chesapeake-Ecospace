@@ -41,7 +41,7 @@ init_terra()  ## shared terra temp dir + progress + memfrac (see cbefs-helpers.R
 ## User setup
 
 out_format       <- "NC"     ## Options: "NC" (canonical), "TIFF", "BOTH"  (daily stack)
-run_mode         <- "TEST"   ## Options: "TEST" (salinity/bott, first 4 years), "FULL" (all)
+run_mode         <- "FULL"   ## Options: "TEST" (salinity/bott, first 4 years), "FULL" (all)
 variables_to_run <- "ALL"    ## Options: "ALL" or specific: c("temperature","salinity")
 nc_compression   <- 2        ## NetCDF deflate level 1-9. Lower = faster writes.
 verbose_mode     <- FALSE    ## TRUE = inspect NetCDF structure before processing
@@ -56,7 +56,7 @@ verbose_mode     <- FALSE    ## TRUE = inspect NetCDF structure before processin
 ## and are the heaviest write here. If you do not need the daily archive, set
 ## write_daily_stack <- FALSE to skip the per-year temp chunks and the slow
 ## deflate-compressed combined write entirely.
-write_daily_stack   <- TRUE   ## combined daily NC in var-stack-NC (archive / daily analyses)
+write_daily_stack   <- FALSE   ## combined daily NC in var-stack-NC (archive / daily analyses)
 write_monthly_stack <- TRUE   ## monthly-mean NC in var-stack-NC-monthly (feeds ASCII/GIF/PDF)
 
 depths_all <- c("bott", "surf", "davg") ## bottom, surface, and depth-averaged
@@ -70,7 +70,7 @@ nc_path <- "./data-inputs/spatial-dynamic/CBEFS-hindcast"
 tmp_dir_nc  <- "./output-for-ecospace/env-drivers/CBEFS-hindcast/tmp-yearly-NC"
 
 #out_dir_tif <- "./output-for-ecospace/env-drivers/CBEFS-hindcast/var-stack-TIFF"
-out_dir_nc         <- "./output-for-ecospace/env-drivers/CBEFS-hindcast/var-stack-NC"
+out_dir_nc         <- "./output-for-ecospace/env-drivers/CBEFS-hindcast/var-stack-NC-daily"
 out_dir_nc_monthly <- "./output-for-ecospace/env-drivers/CBEFS-hindcast/var-stack-NC-monthly"
 
 if (write_daily_stack) {
@@ -366,30 +366,37 @@ for (v in variables) {
     longname_out <- paste0(v, " ", depth_longname[[d]])
     stem         <- paste0(v, "_", d, "_", year_min, "_", year_max)
 
-    ## Combined daily stack (re-open yearly chunks as a file-backed stack)
+    ## Combined daily stack (re-open yearly chunks as a file-backed stack).
+    ## This deflate write is the heavy tail of a FULL run; time it so the phase
+    ## reports itself instead of looking stalled (set write_daily_stack <- FALSE
+    ## to skip the daily archive entirely -- nothing downstream reads it).
     if (write_daily_stack) {
-      d_all <- do.call(c, lapply(chunk_files[[d]], rast))
+      t_daily <- Sys.time()
+      d_all   <- do.call(c, lapply(chunk_files[[d]], rast))
 
       if (out_format %in% c("NC", "BOTH")) {
         out_nc <- file.path(out_dir_nc, paste0(stem, ".nc"))
         write_stack(d_all, out_nc, "NC", varname_out, longname_out)
-        cat("   Wrote daily NC:   ", basename(out_nc), "\n")
+        log_step(sprintf("  wrote daily NC   %s (%d layers) in %.1fs",
+                         basename(out_nc), nlyr(d_all), elapsed_s(t_daily)))
       }
       if (out_format %in% c("TIFF", "BOTH")) {
         out_tif <- file.path(out_dir_tif, paste0(stem, ".tif"))
         write_stack(d_all, out_tif, "TIFF", varname_out, longname_out)
-        cat("   Wrote daily TIFF: ", basename(out_tif), "\n")
+        log_step(sprintf("  wrote daily TIFF %s in %.1fs",
+                         basename(out_tif), elapsed_s(t_daily)))
       }
       rm(d_all)
     }
 
     ## Combined monthly stack (in-memory per-year means, ~12 layers/year)
     if (write_monthly_stack) {
+      t_mon   <- Sys.time()
       m_all   <- do.call(c, month_accum[[d]])
       out_mon <- file.path(out_dir_nc_monthly, paste0(stem, "_monthly_mean.nc"))
       write_stack(m_all, out_mon, "NC", varname_out, longname_out)
-      cat("   Wrote monthly NC: ", basename(out_mon),
-          "(", nlyr(m_all), "layers )\n")
+      log_step(sprintf("  wrote monthly NC %s (%d layers) in %.1fs",
+                       basename(out_mon), nlyr(m_all), elapsed_s(t_mon)))
       rm(m_all)
     }
 
