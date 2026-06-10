@@ -19,13 +19,13 @@ All scripts are standalone (no `source()` dependencies). Run in this order:
 | 1 | `make-habitat-maps/make-baythymetry-basemap.R` | None — downloads live from NOAA |
 | 2 | `make-habitat-maps/make-jurisdictional-maps.R` | `pot_buffer_m` (default 7200 m) |
 | 3 | `make-environmental-drivers/make-climatology-maps.R` | None |
-| 4 | `make-environmental-drivers/process-CBEFS.R` | `run_mode <- "TEST"\|"FULL"`, `out_format <- "NC"\|"TIFF"\|"BOTH"`, `verbose_mode <- FALSE\|TRUE` |
-| 5 | `make-environmental-drivers/aggregate-daily-stacks-to-monthly.R` | `overwrite_monthly`, `start_year`/`end_year` |
+| 4 | `make-environmental-drivers/process-CBEFS.R` | `run_mode <- "TEST"\|"FULL"`, `out_format <- "NC"\|"TIFF"\|"BOTH"`, `write_daily_stack`, `write_monthly_stack` |
+| 5 | `make-environmental-drivers/make-ecospace-ascii-drivers.R` | `write_series`, `write_climatology` |
 | 6 | `make-preference-functions/query-aquamaps-data.R` | None — requires internet (FishBase API) |
 | 7 | `make-preference-functions/Make-preference-functions.R` | None |
 
 Optional visualization:
-- `make-environmental-drivers/make-gif-videos.R` — configure `file_settings` table and `start_year`/`num_years`
+- `make-environmental-drivers/make-gif-videos.R` — configure `gif_prefixes` and `start_year`/`num_years` (per-variable styling lives in `cbefs-helpers.R::cbefs_var_styles`)
 - `make-environmental-drivers/make-monthly-maps.R` — single-variable QC pipeline (bottom salinity)
 
 ---
@@ -88,7 +88,7 @@ Example: `temperature_bott_1985_2024.nc`
 
 ## CBEFS CRS / Alignment Caveat
 
-CBEFS hindcast data is on an **oblique stereographic projection** (+proj=stere +lon_0=283.54 +lat_0=37.75), 336×564 grid, ~600 m cell resolution. Current processing in `process-CBEFS.R` and `aggregate-daily-stacks-to-monthly.R` intentionally ignores CRS — the goal so far has been to get temporal aggregation mechanics working. Before these outputs can be used in Ecospace, all environmental-driver stacks must be reprojected and resampled to the basemap grid (88×56, EPSG:4326). This is a known outstanding task.
+CBEFS hindcast data is on an **oblique stereographic projection** (+proj=stere +lon_0=283.54 +lat_0=37.75), 336×564 grid, ~600 m cell resolution. `process-CBEFS.R` keeps its stacks in the native model grid (no CRS) on purpose; georeferencing to the Ecospace basemap (88×56, EPSG:4326) happens once downstream in `make-ecospace-ascii-drivers.R`, which regrids via the stored lon/lat arrays (`cbefs-helpers.R::build_regrid_index`).
 
 ---
 

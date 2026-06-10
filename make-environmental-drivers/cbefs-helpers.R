@@ -284,17 +284,31 @@ climatology_12 <- function(x_monthly, dates = NULL) {
 ##
 ## Write one ESRI ASCII grid per layer. `fnames` is a character vector of file
 ## names (no directory), one per layer.
+##
+## Writes ONLY the .asc grid. terra/GDAL otherwise drop three sidecars next to
+## each .asc that Ecospace does not need (it reads only the .asc header):
+##   .prj           <- the raster CRS          -> cleared per layer
+##   .asc.aux.xml   <- GDAL PAM metadata        -> GDAL_PAM_ENABLED=NO
+##   .asc.aux.json  <- terra layer name/time    -> name/time cleared per layer
+## The .asc geometry is in degrees regardless of CRS, so clearing CRS is safe
+## (the basemap .asc is stored CRS-less too).
 
 write_ascii_layers <- function(x, out_dir, fnames, naflag = -9999) {
 
   stopifnot(length(fnames) == terra::nlyr(x))
   dir.create(out_dir, showWarnings = FALSE, recursive = TRUE)
 
+  terra::setGDALconfig("GDAL_PAM_ENABLED=NO")   ## suppress .asc.aux.xml
+
   out <- file.path(out_dir, fnames)
 
   for (i in seq_len(terra::nlyr(x))) {
+    lyr <- x[[i]]
+    terra::crs(lyr)  <- ""        ## no .prj
+    names(lyr)       <- ""        ## no .asc.aux.json
+    terra::time(lyr) <- NULL      ## "
     terra::writeRaster(
-      x[[i]],
+      lyr,
       filename  = out[i],
       filetype  = "AAIGrid",   ## ESRI/Arc-Info ASCII grid (.asc); "ascii" is not a valid driver
       overwrite = TRUE,
@@ -397,6 +411,8 @@ CBEFS_OUT_ROOT          <- "./output-for-ecospace/env-drivers/CBEFS-hindcast"
 NATIVE_STACK_SUBDIR     <- "var-stack-NC-monthly"             ## Stage 1, also F00 source
 REGRIDDED_STACK_SUBDIR  <- "var-stack-NC-monthly-regridded"   ## Stage 2, per basemap
 ASCII_PRODUCT_SUBDIR    <- "ST_drivers_ASCII"                 ## spatio-temporal drivers
+PDF_PRODUCT_SUBDIR      <- "PDFs"                             ## PDF plots
+GIF_PRODUCT_SUBDIR      <- "GIFs"                             ## GIF animations
 BASEMAP_DIR_DEFAULT     <- "./output-for-ecospace/habitat/basemaps"
 CBEFS_RAW_DIR_DEFAULT   <- "./data-inputs/spatial-dynamic/CBEFS-hindcast"
 
@@ -512,14 +528,6 @@ regrid_stack_file <- function(nc_in, nc_out, basemap, ri) {
                   varname = varname, longname = varname)
   invisible(nc_out)
 }
-
-## -----------------------------------------------------------------------------
-## Orchestration guard
-##
-## Stage scripts define a function and then run it with defaults ONLY when not
-## orchestrated, so they work standalone (Rscript / RStudio Source) yet stay
-## passive when sourced by run-environmental-drivers.R (which sets the option).
-orchestrated <- function() isTRUE(getOption("cbefs.orchestrated", FALSE))
 
 ## Keep only monthly NC files whose <var>_<depth> prefix is in `prefixes`
 ## (NULL = keep all).
