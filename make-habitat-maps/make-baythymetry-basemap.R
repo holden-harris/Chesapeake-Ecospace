@@ -132,24 +132,16 @@ tab <- rbind(
 #    depth_rast2 (fact=2) 0.03325413 0.03314286 119.71488 119.31429 2910.123 3689.463 2.910123 3.689463 2.91 × 3.69 10.736790
 
 ## Compare plots
-par(mfrow=c(2,2))
-plot(depth_rast,  colNA='gray', main=paste0(round(tab$sq_km[1]), " sq. km | ", dim(depth_rast)[1],'x',dim(depth_rast)[2]))
-plot(depth_rast2, colNA='gray', main=paste0(round(tab$sq_km[2]), " sq. km | ", dim(depth_rast2)[1],'x',dim(depth_rast2)[2]))
-plot(depth_rast3, colNA='gray', main=paste0(round(tab$sq_km[3]), " sq. km | ", dim(depth_rast3)[1],'x',dim(depth_rast3)[2]))
-plot(depth_rast4, colNA='gray', main=paste0(round(tab$sq_km[4]), " sq. km | ", dim(depth_rast4)[1],'x',dim(depth_rast4)[2]))
-par(mfrow=c(1,1))
 
 ## ----------------------------------------------------------------------------
 ## Write out depth/base map
 
-## Choose the raster to export
-depth_base <- depth_rast2   ## aggregated (fact = 2) depth in meters
 
 ## -----------------------------------------------------------------------------
 ## Write depth map to PNG with legend
 
 png(
-  filename = "./make-habitat-maps/plots/depth-map.png",
+  filename = "./make-habitat-maps/plots/depth-maps.png",
   width = 6,
   height = 6,
   units = "in", 
@@ -157,22 +149,35 @@ png(
   bg = "white"
 )
 
-par(mar = c(4, 4, 2, 5))
-
-plot(
-  depth_base,
-  colNA = "gray75",
-  axes = TRUE,
-  col = hcl.colors(100, "viridis"),
-  plg = list(title = "Depth (m)")
-)
+par(mfrow=c(2,2)) 
+plot(depth_rast,  colNA='gray', main=paste0(round(tab$sq_km[1]), " sq. km | ", dim(depth_rast)[1],'x',dim(depth_rast)[2]))
+plot(depth_rast2, colNA='gray', main=paste0(round(tab$sq_km[2]), " sq. km | ", dim(depth_rast2)[1],'x',dim(depth_rast2)[2]))
+plot(depth_rast3, colNA='gray', main=paste0(round(tab$sq_km[3]), " sq. km | ", dim(depth_rast3)[1],'x',dim(depth_rast3)[2]))
+plot(depth_rast4, colNA='gray', main=paste0(round(tab$sq_km[4]), " sq. km | ", dim(depth_rast4)[1],'x',dim(depth_rast4)[2]))
+par(mfrow=c(1,1))
 
 dev.off()
 
 
-## Write ESRI ASCII grid for Ecospace
+## Write out basemaps
 writeRaster(
-  depth_base, filename = "./output-for-ecospace/habitat/base-depth-map-88x56.asc", 
+  depth_rast, filename = "./output-for-ecospace/habitat/basemaps/base-depth-map-F01-176x111.asc", 
   overwrite = TRUE, NAflag = -9999
 )
+
+writeRaster(
+  depth_rast2, filename = "./output-for-ecospace/habitat/basemaps/base-depth-map-F02-88x56.asc", 
+  overwrite = TRUE, NAflag = -9999
+)
+
+writeRaster(
+  depth_rast3, filename = "./output-for-ecospace/habitat/basemaps/base-depth-map-F03-59x37.asc", 
+  overwrite = TRUE, NAflag = -9999
+)
+
+writeRaster(
+  depth_rast4, filename = "./output-for-ecospace/habitat/basemaps/base-depth-map-F04-44x28.asc", 
+  overwrite = TRUE, NAflag = -9999
+)
+
 
