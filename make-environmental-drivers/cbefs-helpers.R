@@ -35,6 +35,24 @@ suppressPackageStartupMessages({
 CBEFS_STERE_CRS <- "+proj=stere +lon_0=283.54 +lat_0=37.75 +units=m"
 
 ## -----------------------------------------------------------------------------
+## Canonical paths  <-- EDIT HERE to change input/output locations
+##
+## Single source of truth for the CBEFS-hindcast tree, so every stage (regrid /
+## ASCII / PDF / GIF) builds the same grid-<label>/... paths. A constant edited
+## here flows to every script -- e.g. rename a product subfolder once below.
+## To relocate only the OUTPUT tree for one orchestrated run, set `out_root` in
+## run-environmental-drivers.R (it overrides CBEFS_OUT_ROOT per run).
+
+CBEFS_OUT_ROOT          <- "./output-for-ecospace/env-drivers/CBEFS-hindcast"
+NATIVE_STACK_SUBDIR     <- "var-stack-NC-monthly"             ## Stage 1, also F00 source
+REGRIDDED_STACK_SUBDIR  <- "var-stack-NC-monthly-regridded"   ## Stage 2, per basemap
+ASCII_PRODUCT_SUBDIR    <- "ASCII"                            ## ASCII outputs for Ecospace
+PDF_PRODUCT_SUBDIR      <- "PDFs"                             ## PDF plots
+GIF_PRODUCT_SUBDIR      <- "GIFs"                             ## GIF animations
+BASEMAP_DIR_DEFAULT     <- "./output-for-ecospace/habitat/basemaps"
+CBEFS_RAW_DIR_DEFAULT   <- "./data-inputs/spatial-dynamic/CBEFS-hindcast"
+
+## -----------------------------------------------------------------------------
 ## Runtime environment + diagnostics
 ##
 ## Shared terra setup (one temp location for the whole module) and lightweight
@@ -401,20 +419,6 @@ get_var_style <- function(prefix, styles = cbefs_var_styles) {
   }
 }
 
-## -----------------------------------------------------------------------------
-## Canonical paths
-##
-## Single source of truth for the CBEFS-hindcast output tree, so every stage
-## builds the same grid-<label>/... paths.
-
-CBEFS_OUT_ROOT          <- "./output-for-ecospace/env-drivers/CBEFS-hindcast"
-NATIVE_STACK_SUBDIR     <- "var-stack-NC-monthly"             ## Stage 1, also F00 source
-REGRIDDED_STACK_SUBDIR  <- "var-stack-NC-monthly-regridded"   ## Stage 2, per basemap
-ASCII_PRODUCT_SUBDIR    <- "ST_drivers_ASCII"                 ## spatio-temporal drivers
-PDF_PRODUCT_SUBDIR      <- "PDFs"                             ## PDF plots
-GIF_PRODUCT_SUBDIR      <- "GIFs"                             ## GIF animations
-BASEMAP_DIR_DEFAULT     <- "./output-for-ecospace/habitat/basemaps"
-CBEFS_RAW_DIR_DEFAULT   <- "./data-inputs/spatial-dynamic/CBEFS-hindcast"
 
 ## -----------------------------------------------------------------------------
 ## Resolution registry

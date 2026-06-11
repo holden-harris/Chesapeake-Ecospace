@@ -2,27 +2,28 @@
 
 R project to build spatial, environmental, and species preference inputs for a Chesapeake Bay ecosystem model in **Ecopath with Ecosim (EwE) / Ecospace**. Outputs are ESRI ASCII grids, NetCDF raster stacks, and CSV preference tables ready for import into Ecospace.
 
-Ecospace grid: **88 columns × 56 rows**, ~2-arcminute resolution, covering the Chesapeake Bay (−77.4 to −75.55°W, 36.7 to 39.65°N).
+Ecospace grids: four resolutions sharing one extent (Chesapeake Bay, −77.4 to −75.55°W, 36.7 to 39.65°N, WGS84). The standard grid is **F02 = 88×56** (56 columns × 88 rows, ~2-arcminute / ~3.5 km cells), with a finer option (F01 176×111) and coarser ones (F03 59×37, F04 44×28).
 
 ## Quick Start
 
-Scripts are independent entry points (no `source()` calls). Run them in pipeline order; each pipeline can be run independently once its prerequisites exist.
+Most scripts are independent entry points. The **environmental-driver module** is the exception: it is a 3-stage pipeline whose stage scripts share `cbefs-helpers.R` and are driven by an orchestrator (`run-environmental-drivers.R`). Run pipelines in order; each can run independently once its prerequisites exist.
 
 ### Pipeline A — Spatial Basemap (run once)
-1. `habitat/make-baythymetry-basemap.R` — downloads NOAA bathymetry, creates `output-for-ecospace/habitat/base-depth-map-88x56.asc`
-2. `habitat/make-jurisdictional-maps.R` — creates binary MD/VA/Potomac ASC grids (requires basemap from step 1)
+1. `make-habitat-maps/make-baythymetry-basemap.R` — downloads NOAA bathymetry, creates the Ecospace depth basemaps in `output-for-ecospace/habitat/basemaps/` (`base-depth-map-F01..F04-*.asc`)
+2. `make-habitat-maps/make-jurisdictional-maps.R` — creates binary MD/VA/Potomac ASC grids (requires basemap from step 1)
 
-### Pipeline B — Environmental Drivers (long-running, requires ~43 GB CBEFS data)
-3. `environmental-drivers/process-CBEFS.R` — CBEFS hindcasts (1985–2024) → daily NC stacks **and** monthly-mean NC stacks in one pass (monthly computed in-process; native model grid). Set `run_mode <- "TEST"` for a salinity/bottom 4-year trial; toggle `write_daily_stack` / `write_monthly_stack` (set `write_daily_stack <- FALSE` to skip the ~47 GB daily archive — nothing downstream needs it)
-4. `environmental-drivers/make-ecospace-ascii-drivers.R` — monthly NC → Ecospace ASCII drivers on the 88×56 grid: full monthly series + 12-month climatology (regridded via the stored lon/lat arrays; `cbefs-helpers.R` holds the shared logic)
-5. *(optional viz)* `environmental-drivers/make-gif-videos.R` → GIF animations; `make-driver-pdfs.R` → climatology PDF panels — both read the monthly NC
-6. *(independent)* `environmental-drivers/make-climatology-maps.R` — Bay Atlas climatology → monthly ASC files (5 variables × 12 months)
+### Pipeline B — Environmental Drivers (3-stage, long-running, requires ~43 GB CBEFS data)
+A 3-stage pipeline that turns CBEFS hindcasts (1985–2024) into Ecospace drivers at all four resolutions. **See [`make-environmental-drivers/README.md`](make-environmental-drivers/README.md) for the full technical reference**, and [`docs/environmental-drivers-methods.md`](docs/environmental-drivers-methods.md) for the methods/rationale.
+
+3. **Stage 1 — `make-environmental-drivers/process-CBEFS.R`** (run separately): raw CBEFS → native monthly-mean NC stacks (monthly computed in-process; native curvilinear grid, index space). `run_mode <- "TEST"` for a quick trial; `write_daily_stack <- FALSE` skips the ~47 GB daily archive (unused downstream).
+4. **Stages 2–3 — `make-environmental-drivers/run-environmental-drivers.R`** (orchestrator): toggle `do_regrid` (Stage 2: regrid native → each basemap), `do_ascii` (Stage 3a: ASCII drivers), `do_pdf` / `do_gif` (Stage 3b/c: PDF/GIF visualizations). Select `resolutions` and `variables_to_run` (`NULL` = all).
+5. *(independent)* `make-environmental-drivers/make-atlas-climatology-maps.R` — Bay Atlas climatology → monthly ASC files (separate from the 3-stage pipeline).
 
 ### Pipeline C — Species Preference Functions
-7. `preference-functions/query-env-preference-parameters.R` — queries FishBase API for species traits
-8. `preference-functions/Make-preference-functions.R` — compiles `data/derived/env-pref-parameters.csv` → logistic preference curves
+6. `make-preference-functions/query-env-preference-parameters.R` — queries FishBase API for species traits
+7. `make-preference-functions/Make-preference-functions.R` — compiles `data/derived/env-pref-parameters.csv` → logistic preference curves
 
-> **Note:** `preference-functions/query-aquamaps-data.R` (AquaMaps HSPEN query) needs rework before use — see [docs/INVENTORY.md](docs/INVENTORY.md#6-known-issues).
+> **Note:** `make-preference-functions/query-aquamaps-data.R` (AquaMaps HSPEN query) needs rework before use — see [docs/INVENTORY.md](docs/INVENTORY.md#6-known-issues).
 
 ## Full Documentation
 

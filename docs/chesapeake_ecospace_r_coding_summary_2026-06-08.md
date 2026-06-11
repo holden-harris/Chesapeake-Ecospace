@@ -1,6 +1,8 @@
 # Chesapeake Bay Blue Catfish Ecospace Project  
 ## R Coding Work Summary to Date
 
+> **Historical snapshot (2026-06-08).** Section 7 (environmental drivers) predates the 3-stage, multi-resolution refactor. For the current environmental-driver workflow see [`make-environmental-drivers/README.md`](../make-environmental-drivers/README.md) and [`environmental-drivers-methods.md`](environmental-drivers-methods.md); for the repository inventory see [`INVENTORY.md`](INVENTORY.md).
+
 **Prepared:** 2026-06-08  
 **Scope reviewed:** Project conversation history and uploaded project materials available in this ChatGPT project. This summary focuses on the R workflow developed to support Chesapeake Bay Ecospace model preparation, especially habitat maps, jurisdiction/region masks, species preference functions, environmental drivers, and preliminary scenario-output visualizations.
 
