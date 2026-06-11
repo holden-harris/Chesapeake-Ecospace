@@ -4,7 +4,7 @@
 
 This repository builds all spatial and environmental inputs required to run a Chesapeake Bay ecosystem model in **Ecopath with Ecosim (EwE) / Ecospace**. The outputs are ASCII grid files, NetCDF raster stacks, and CSV preference function tables that feed directly into the EwE Ecospace spatial module.
 
-**Ecospace grid:** 88 columns × 56 rows, ~2-arcminute resolution (~3.5 km × 3.7 km cells), covering the Chesapeake Bay bounding box (−77.4 to −75.55°W, 36.7 to 39.65°N), WGS84.
+**Ecospace grids:** four resolutions sharing one extent (Chesapeake Bay bounding box −77.4 to −75.55°W, 36.7 to 39.65°N, WGS84): F01 (176×111), **F02 (88×56, standard, ~2-arcminute / ~3.5 km cells)**, F03 (59×37), F04 (44×28). Labels are `<rows>×<cols>` (F02 = 88 rows × 56 cols). Environmental drivers are produced at all four; the native CBEFS grid (F00, 336×564) is kept for visualization only.
 
 **Three main output categories for Ecospace:**
 1. Spatial basemap — depth grid + jurisdiction layers
@@ -44,12 +44,18 @@ This repository builds all spatial and environmental inputs required to run a Ch
 
 | Script | Purpose | Reads | Writes | Pipeline step |
 |--------|---------|-------|--------|---------------|
-| `cbefs-helpers.R` | **Shared helper module** (sourced, not run). lon/lat-based regrid index + many-to-one mean aggregation to the basemap; monthly/climatology aggregation; date recovery; ASCII writer; palette builder; plus shared `init_terra()`, runtime diagnostics (`log_step`/`free_ram_mb`), monthly-NC file helpers (`list_monthly_nc`/`prefix_from_monthly`), `robust_zlim()`, and the canonical per-variable plot styles (`cbefs_var_styles`/`get_var_style`) | — | — | **Sourced by process-CBEFS + the ASCII / GIF / PDF scripts** |
-| `process-CBEFS.R` | **Primary CBEFS processor.** Reads 40 yearly CBEFS NetCDF files; splits each variable into 3 depth bands (`_bott`, `_surf`, `_davg`); writes daily stacks **and** monthly-mean stacks (monthly computed **in-process** while each year is in memory, so the big daily file is never re-read). User controls: `out_format` (**NC** default / TIFF / BOTH), `run_mode` (TEST = salinity/bott/4 yr; FULL = all), `variables_to_run`, `nc_compression`, `write_daily_stack`, `write_monthly_stack` | `data-inputs/spatial-dynamic/CBEFS-hindcast/holdenharris_YYYY_v*.nc` (40 files) | `var-stack-NC/<var>_<depth>_<yr>_<yr>.nc` (daily, 15 in FULL); `var-stack-NC-monthly/<var>_<depth>_<yr>_<yr>_monthly_mean.nc` (monthly, 15); `var-stack-TIFF/` only if TIFF requested | **Step 4 — long-running** (~hours in FULL mode) || `make-ecospace-ascii-drivers.R` | **Final Ecospace drivers.** Builds the lon/lat regrid index once, regrids every monthly stack to the 88×56 basemap, writes the full monthly ASCII time series **and** the 12-month climatology, per `<var>_<depth>` | `var-stack-NC-monthly/*.nc`; a raw CBEFS file (lon/lat); basemap ASC | `output-for-ecospace/env-drivers/CBEFS-hindcast/ASCII-monthly/<var>_<depth>_YYYY_MM.asc`; `ASCII-climatology/<var>_<depth>_<Mon>.asc` | **Step 6 — key deliverable** |
-| `make-gif-videos.R` | Renders GIF animations from the **monthly** NC (no re-aggregation). User controls: `start_year`, `num_years`, `gif_prefixes` (which variables; styling via shared `cbefs_var_styles`), `overwrite_gif` | `var-stack-NC-monthly/*.nc` | `make-environmental-drivers/GIFs/<prefix>/<prefix>_monthly_<yr>_<yr>.gif` + frame PNGs (not in git) | **Visualization** — optional |
-| `make-driver-pdfs.R` | Vector PDF plots: per `<var>_<depth>`, a 3×4 monthly-climatology panel grid | `var-stack-NC-monthly/*.nc` | `make-environmental-drivers/PDFs/<prefix>_climatology.pdf` | **Visualization** — optional |
-| `make-climatology-maps.R` | Separate Bay Atlas pipeline. Reads Bay Atlas climatology NetCDF; builds 12-month stacks; reprojects/resamples to basemap; writes monthly ASC + PNG panels | `data-inputs/spatial-dynamic/CBEFS-climatology/ches-clim-atlas-vims.nc` (gitignored); basemap ASC | `output-for-ecospace/env-drivers/ches-atlas-climatology/<var>/<var>_<Mon>.asc` (60 files); PNG figures | **Independent** — run once |
-| `make-monthly-maps.R` | **DEPRECATED** single-variable bottom-salinity prototype (geographically incorrect index-space resample). Superseded by `make-ecospace-ascii-drivers.R`; delete after verification | — | — | **Deprecated** |
+> **3-stage pipeline** (see [`make-environmental-drivers/README.md`](../make-environmental-drivers/README.md) for the full reference, [`docs/environmental-drivers-methods.md`](environmental-drivers-methods.md) for methods). Stage 1 extracts/aggregates once; Stage 2 regrids onto each basemap once; Stage 3 builds products. `run-environmental-drivers.R` orchestrates Stages 2–3. Outputs live under `output-for-ecospace/env-drivers/CBEFS-hindcast/{var-stack-NC-monthly, grid-<label>/…}`.
+
+| Script | Purpose | Reads | Writes | Pipeline step |
+|--------|---------|-------|--------|---------------|
+| `cbefs-helpers.R` | **Shared helper module** (sourced, not run): canonical paths; lon/lat regrid index + many-to-one mean (`build_regrid_index`/`regrid_to_basemap`/`regrid_stack_file`); resolution registry (`list_basemaps`/`resolution_set`/`stack_dir_for`); monthly/climatology aggregation; date recovery; ASCII writer (sidecar-suppressing); `init_terra()`; diagnostics; per-variable plot styles | — | — | **Sourced by all stage scripts** |
+| `process-CBEFS.R` | **Stage 1.** Reads 40 yearly CBEFS files; splits each variable into 3 depth bands (`_bott`/`_surf`/`_davg`); writes monthly-mean stacks (computed **in-process**; native curvilinear grid, index space). Flags: `run_mode` (TEST/FULL), `out_format` (NC/TIFF/BOTH), `variables_to_run`, `nc_compression`, `write_daily_stack` (off by default, ~47 GB), `write_monthly_stack` | `data-inputs/spatial-dynamic/CBEFS-hindcast/holdenharris_YYYY_v*.nc` (40) | `var-stack-NC-monthly/<var>_<depth>_<yr>_<yr>_monthly_mean.nc` (15); optional `var-stack-NC-daily/` | **Stage 1 — long-running (~hours)** |
+| `regrid-to-basemaps.R` | **Stage 2.** Regrids native monthly stacks onto each basemap (F01–F04) once via the lon/lat index (many-to-one mean; `terra::resample` does not apply to the curvilinear grid). Flags: `resolutions`, `variables_to_run`, `overwrite_nc` | `var-stack-NC-monthly/*.nc`; one raw CBEFS file (lon/lat); basemaps | `grid-<label>/var-stack-NC-monthly-regridded/*.nc` (15 per basemap) | **Stage 2** |
+| `make-ecospace-ascii-drivers.R` | **Stage 3a — key deliverable.** Regridded stacks → Ecospace ASCII (sidecars suppressed; basemaps only, no F00). Flags: `resolutions`, `variables_to_run`, `write_series`, `write_climatology` | `grid-<label>/var-stack-NC-monthly-regridded/*.nc` | `grid-<label>/ASCII/<var>_<depth>/<var>_<depth>_YYYY_MM.asc` + `climatology/<var>_<depth>_<Mon>.asc` | **Stage 3a** |
+| `make-driver-pdfs.R` | **Stage 3b.** Per `<var>_<depth>`: 12-month climatology panel + per-year monthly PDF, all resolutions incl. native F00 | native + regridded stacks | `grid-<label>/PDFs/<prefix>_{climatology,monthly_by_year}.pdf` | **Visualization** |
+| `make-gif-videos.R` | **Stage 3c.** Monthly GIF animations, all resolutions incl. F00. Flags: `gif_prefixes` (NULL = all), `gif_start_year`/`gif_end_year`, `overwrite_gif` | native + regridded stacks | `grid-<label>/GIFs/<var>_<depth>/<...>_monthly_<yr>_<yr>.gif` | **Visualization** |
+| `run-environmental-drivers.R` | **Orchestrator** for Stages 2–3. Sets shared globals and sources the chosen stages. Flags: `do_regrid/ascii/pdf/gif`, `resolutions`, `variables_to_run`, `gif_prefixes`, `gif_start_year/end_year`, `out_root` | (sources stage scripts) | — | **Entry point (Stages 2–3)** |
+| `make-atlas-climatology-maps.R` | **Independent** Bay Atlas pipeline (renamed from `make-climatology-maps.R`). Reads Bay Atlas climatology NetCDF → monthly ASC + PNG panels | `data-inputs/spatial-dynamic/CBEFS-climatology/ches-clim-atlas-vims.nc`; basemap | `output-for-ecospace/env-drivers/ches-atlas-climatology/<var>/<var>_<Mon>.asc`; PNG | **Independent** — run once |
 
 ### make-preference-functions/
 
@@ -69,6 +75,8 @@ This repository builds all spatial and environmental inputs required to run a Ch
 ---
 
 ## 4. Data Pipeline
+
+> **Note:** the Environmental-Drivers (Pipeline B) box below predates the 3-stage refactor and is kept only as a high-level sketch. For the current flow use the [`make-environmental-drivers/` table](#3-r-script-inventory) above, [`make-environmental-drivers/README.md`](../make-environmental-drivers/README.md), and the [methods report](environmental-drivers-methods.md): **Stage 1** `process-CBEFS.R` → **Stage 2** `regrid-to-basemaps.R` (regrid native → each basemap F01–F04) → **Stage 3** `make-ecospace-ascii-drivers.R` / `make-driver-pdfs.R` / `make-gif-videos.R`, orchestrated by `run-environmental-drivers.R`. ASCII drivers now land in `grid-<label>/ASCII/<var>_<depth>/` (per resolution), not a single `ASCII-monthly/`.
 
 ```
 ╔══════════════════════════════════════════════════════╗
@@ -137,7 +145,9 @@ All final Ecospace inputs live in `output-for-ecospace/`:
 | `jurisdictions/ascii/jurisdiction_virginia.asc` | Binary Virginia presence layer (1/0/NA) | ESRI ASCII grid |
 | `jurisdictions/ascii/jurisdiction_potomac.asc` | Binary Potomac buffer layer (1/0/NA) | ESRI ASCII grid |
 | `env-drivers/ches-atlas-climatology/<var>/` | Monthly climatology ASC files (5 vars × 12 months = 60 files) | ESRI ASCII grid |
-| `env-drivers/CBEFS-hindcast/var-stack-NC-monthly/` | Monthly mean env driver stacks, 1985–2024 (5 vars × 3 depths = 15 NC files) | NetCDF |
+| `env-drivers/CBEFS-hindcast/grid-<label>/ASCII/<var>_<depth>/` | **Ecospace environmental drivers** — monthly ASCII series (480/var) + 12-month climatology, per basemap F01–F04 (15 vars × 492 × 4 = 29,520 files) | ESRI ASCII grid |
+| `env-drivers/CBEFS-hindcast/var-stack-NC-monthly/` | Native monthly-mean stacks, 1985–2024 (15 NC; Stage 1, also F00 source) | NetCDF |
+| `env-drivers/CBEFS-hindcast/grid-<label>/var-stack-NC-monthly-regridded/` | Per-basemap regridded monthly stacks (15 × 4 = 60 NC; Stage 2) | NetCDF |
 | `pref-functions/pref-funcs_Sal.csv` | Salinity preference function matrix (functional groups × 1200 steps) | CSV |
 
 **Variables processed from CBEFS:**
@@ -157,7 +167,8 @@ All final Ecospace inputs live in `output-for-ecospace/`:
 | Issue | Location | Priority |
 |-------|----------|----------|
 | `query-env-preference-parameters.R` — `fg` variable bug fixed; output paths corrected. Script has not been re-run against AquaMaps DB; verify results before treating output as authoritative | `make-preference-functions/` | Medium |
-| CBEFS hindcast stacks are not yet reprojected to the basemap grid — CRS is intentionally ignored in current scripts but must be resolved before Ecospace ingestion | `make-environmental-drivers/` | High |
+| ~~CBEFS hindcast stacks not yet reprojected to the basemap grid~~ — **RESOLVED**: Stage 2 `regrid-to-basemaps.R` regrids native → each basemap via the stored lon/lat arrays (many-to-one mean) | `make-environmental-drivers/` | Done |
+| CBEFS monthly stacks carry a duplicated `2024-01` layer (481 layers, 480 distinct months) — upstream `process-CBEFS.R` artifact; harmless downstream (480 distinct ASCII per variable) but should be fixed at source | `process-CBEFS.R` | Low |
 | Preference functions only implemented for salinity; temperature, dissolved oxygen, depth, and NO₃ curves not yet generated | `Make-preference-functions.R` | Medium |
 | Git history contains ~500 MB of previously committed GIF/PNG media; files are now untracked but history not cleaned — use BFG Repo-Cleaner or `git filter-branch` if repo size is a concern | git | Low |
 
@@ -167,9 +178,9 @@ All final Ecospace inputs live in `output-for-ecospace/`:
 
 Items needed before the Ecospace model can run, listed in approximate priority order.
 
-### 7a. Resolve CBEFS CRS and alignment
+### 7a. ~~Resolve CBEFS CRS and alignment~~ — DONE (2026-06)
 
-CBEFS hindcast data is on an oblique stereographic projection (+proj=stere +lon_0=283.54 +lat_0=37.75), 336×564 grid, ~600 m resolution. All current CBEFS scripts deliberately skip CRS handling. Before `output-for-ecospace/env-drivers/` products can be used in Ecospace, they must be reprojected and resampled to the 88×56 basemap. This likely requires adding a reprojection step inside `process-CBEFS.R` or a new post-processing script.
+CBEFS hindcast data is on an oblique stereographic projection (+proj=stere +lon_0=283.54 +lat_0=37.75), 336×564 grid, ~600 m resolution, curvilinear in lon/lat. **Resolved:** Stage 2 `regrid-to-basemaps.R` regrids the native stacks onto each Ecospace basemap (F01–F04) using the stored `longitude`/`latitude` arrays (`cbefs-helpers.R::build_regrid_index` + `regrid_to_basemap`, a many-to-one mean) — `terra::resample` does not apply to the curvilinear grid. Drivers are produced at all four resolutions; see the [methods report](environmental-drivers-methods.md) for rationale.
 
 ### 7b. Build missing static habitat layer scripts
 

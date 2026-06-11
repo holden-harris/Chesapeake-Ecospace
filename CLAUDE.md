@@ -6,7 +6,7 @@ This is the **Chesapeake Bay Blue Catfish Ecospace Project**. The scientific goa
 
 This repository prepares all spatial and environmental model inputs. All final outputs land in `output-for-ecospace/` as ESRI ASCII grids (`.asc`), NetCDF stacks, or CSV tables ready for the EwE/Ecospace software.
 
-**Ecospace grid spec:** 88 columns × 56 rows, ~2-arcminute (~3.5 km) cells, EPSG:4326, bounding box −77.4 to −75.55°W / 36.7 to 39.65°N.
+**Ecospace grid spec:** four resolutions sharing one extent (EPSG:4326, bounding box −77.4 to −75.55°W / 36.7 to 39.65°N). Standard grid **F02 = 88×56** (56 columns × 88 rows, ~2-arcminute / ~3.5 km cells); also F01 (176×111), F03 (59×37), F04 (44×28). Note the `<rows>×<cols>` label convention (F02 = 88 rows × 56 cols).
 
 ---
 
@@ -18,15 +18,16 @@ All scripts are standalone (no `source()` dependencies). Run in this order:
 |------|--------|----------------|
 | 1 | `make-habitat-maps/make-baythymetry-basemap.R` | None — downloads live from NOAA |
 | 2 | `make-habitat-maps/make-jurisdictional-maps.R` | `pot_buffer_m` (default 7200 m) |
-| 3 | `make-environmental-drivers/make-climatology-maps.R` | None |
-| 4 | `make-environmental-drivers/process-CBEFS.R` | `run_mode <- "TEST"\|"FULL"`, `out_format <- "NC"\|"TIFF"\|"BOTH"`, `write_daily_stack`, `write_monthly_stack` |
-| 5 | `make-environmental-drivers/make-ecospace-ascii-drivers.R` | `write_series`, `write_climatology` |
-| 6 | `make-preference-functions/query-aquamaps-data.R` | None — requires internet (FishBase API) |
-| 7 | `make-preference-functions/Make-preference-functions.R` | None |
+| 3 | `make-environmental-drivers/process-CBEFS.R` **(env-driver Stage 1)** | `run_mode <- "TEST"\|"FULL"`, `out_format <- "NC"\|"TIFF"\|"BOTH"`, `write_daily_stack`, `write_monthly_stack` |
+| 4 | `make-environmental-drivers/run-environmental-drivers.R` **(env-driver Stages 2–3, orchestrator)** | `do_regrid/ascii/pdf/gif`, `resolutions`, `variables_to_run`, `gif_prefixes`, `gif_start_year/end_year` |
+| 5 | `make-preference-functions/query-aquamaps-data.R` | None — requires internet (FishBase API) |
+| 6 | `make-preference-functions/Make-preference-functions.R` | None |
 
-Optional visualization:
-- `make-environmental-drivers/make-gif-videos.R` — configure `gif_prefixes` and `start_year`/`num_years` (per-variable styling lives in `cbefs-helpers.R::cbefs_var_styles`)
-- `make-environmental-drivers/make-monthly-maps.R` — single-variable QC pipeline (bottom salinity)
+The environmental-driver module is a **3-stage pipeline** (Stage 1 `process-CBEFS.R` → Stage 2 `regrid-to-basemaps.R` → Stage 3 `make-ecospace-ascii-drivers.R` / `make-driver-pdfs.R` / `make-gif-videos.R`), orchestrated by `run-environmental-drivers.R`. **See [`make-environmental-drivers/README.md`](make-environmental-drivers/README.md)** for the full reference and [`docs/environmental-drivers-methods.md`](docs/environmental-drivers-methods.md) for the methods.
+
+Other env-driver scripts:
+- `make-environmental-drivers/make-atlas-climatology-maps.R` — independent Bay Atlas climatology pipeline (not part of the 3 stages).
+- GIF settings: `gif_prefixes` (NULL = all variables), `gif_start_year`/`gif_end_year`; per-variable styling lives in `cbefs-helpers.R::cbefs_var_styles`.
 
 ---
 
@@ -79,7 +80,7 @@ Example: `temperature_bott_1985_2024.nc`
 
 | File | Why |
 |------|-----|
-| `output-for-ecospace/habitat/base-depth-map-88x56.asc` | The Ecospace basemap — all raster work reprojects to this grid |
+| `output-for-ecospace/habitat/basemaps/base-depth-map-F##-*.asc` | The Ecospace basemaps (F01–F04) — all env-driver regridding targets these grids |
 | `data-inputs/species-info/species-list.csv` | Master species-level FG list used by preference-function scripts |
 | `data-inputs/env-preference-functions/env-pref-parameters.csv` | Manually curated preference parameters (AquaMaps HSPEN Dec 2025 + literature) |
 | `data-inputs/spatial-dynamic/CBEFS-hindcast/*.nc` | 40 raw hindcast files, ~43 GB total — gitignored, do not move |
@@ -88,7 +89,7 @@ Example: `temperature_bott_1985_2024.nc`
 
 ## CBEFS CRS / Alignment Caveat
 
-CBEFS hindcast data is on an **oblique stereographic projection** (+proj=stere +lon_0=283.54 +lat_0=37.75), 336×564 grid, ~600 m cell resolution. `process-CBEFS.R` keeps its stacks in the native model grid (no CRS) on purpose; georeferencing to the Ecospace basemap (88×56, EPSG:4326) happens once downstream in `make-ecospace-ascii-drivers.R`, which regrids via the stored lon/lat arrays (`cbefs-helpers.R::build_regrid_index`).
+CBEFS hindcast data is on an **oblique stereographic projection** (+proj=stere +lon_0=283.54 +lat_0=37.75), 336×564 grid, ~600 m cell resolution, **curvilinear in lon/lat**. `process-CBEFS.R` keeps its stacks in the native model grid (no CRS) on purpose; georeferencing to the Ecospace basemaps (EPSG:4326) happens once in **Stage 2, `regrid-to-basemaps.R`**, via the stored lon/lat arrays (`cbefs-helpers.R::build_regrid_index` + `regrid_to_basemap`, a many-to-one mean — `terra::resample` does **not** apply to the curvilinear grid). This was previously an open issue; it is now resolved by the Stage 2 regrid. See the methods report for rationale.
 
 ---
 
@@ -112,7 +113,7 @@ Each will need to: read source data → resample to basemap → write `.asc` + P
 
 1. **`query-aquamaps-data.R`** — references undefined `fg` variable and writes to `./global-data/` path that does not exist; needs repair before re-running AquaMaps HSPEN queries
 2. **Preference functions** — only salinity is implemented in `Make-preference-functions.R`; temperature, DO, depth, and NO₃ curves still needed
-3. **CBEFS CRS/alignment** — see section above; env-driver stacks not yet reprojected to basemap grid
+3. **CBEFS monthly stacks have a duplicated `2024-01` layer** (481 layers, 480 distinct months) — an upstream `process-CBEFS.R` artifact. Harmless downstream (the duplicate writes to the same `…_2024_01.asc`, so 480 distinct ASCII per variable), but the root cause should be fixed. *(The earlier "CBEFS not reprojected to basemap" issue is now resolved by Stage 2 `regrid-to-basemaps.R`.)*
 4. **Missing lower trophic FGs** — Bivalves, Benthic Invertebrates, SAV, Zooplankton, Phytoplankton, Detritus not yet in `species-list.csv` or `env-pref-parameters.csv`
 5. **Missing habitat layer scripts** — SAV, soft-bottom, hard-bottom, oyster, marsh
 6. **`dispersal-rates/`** — empty placeholder directory
