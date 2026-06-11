@@ -1,0 +1,48 @@
+
+dimensions:
+        x = 336 ;
+        y = 564 ;
+        time = UNLIMITED ; // (365 currently)
+        depths = 3 ;
+variables:
+        double longitude(y, x) ;
+                longitude:long_name = "Longitude corresponding to the 336x564 grid points of the model grid" ;
+                longitude:units = "degree_east" ;
+                longitude:standard_name = "longitude" ;
+        double latitude(y, x) ;
+                latitude:long_name = "Latitude corresponding to the 336x564 grid points of the model grid" ;
+                latitude:units = "degree_north" ;
+                latitude:standard_name = "latitude" ;
+        float bathymetry(y, x) ;
+                bathymetry:units = "meter" ;
+                bathymetry:long_name = "Bathymetry of the model" ;
+        int mask_land_sea(y, x) ;
+                mask_land_sea:long_name = "Mask distinguishing between land (zero) and sea (one)" ;
+        double time(time) ;
+                time:long_name = "Time corresponding to the model results in that particular year" ;
+                time:units = "days since 1975-01-01 00:00:00" ;
+                time:calendar = "gregorian_proleptic" ;
+        float temperature(time, depths, y, x) ;
+                temperature:long_name = "Modeled potential temperature at the bottom/surface/depth-average" ;
+                temperature:units = "Celsius" ;
+                temperature:time = "time" ;
+        float salinity(time, depths, y, x) ;
+                salinity:long_name = "Modeled practical salinity at the bottom/surface/depth-average" ;
+                salinity:units = "PSS-1978" ;
+                salinity:time = "time" ;
+        float diss_o2(time, depths, y, x) ;
+                diss_o2:long_name = "Modeled dissolved dioxygen at the bottom/surface/depth-average" ;
+                diss_o2:units = "milligram_dioxygen liter-1" ;
+                diss_o2:time = "time" ;
+        float phytoplankton(time, depths, y, x) ;
+                phytoplankton:long_name = "Modeled phytoplankton concentration at the bottom/surface/depth-average" ;
+                phytoplankton:units = "millimole_nitrogen meter-3" ;
+                phytoplankton:time = "time" ;
+        float NO3(time, depths, y, x) ;
+                NO3:long_name = "Modeled nitrate+nitrite concentration at the bottom/surface/depth-average" ;
+                NO3:units = "millimole_nitrogen meter-3" ;
+                NO3:time = "time" ;
+
+history = "File created by Pierre St-Laurent (pst-laurent@vims.edu) on 12-Jan-2026 12:20:27 for Holden Harris (holden.earl.harris@gmail.com). The model results for year 1985 are defined on a grid of dimensions 336x564 corresponding to an oblique stereographic projection (600m x 600m, proj +proj=stere +lon_0=283.54 +lat_0=37.75). The longitude and latitude corresponding to the 336x564 points are stored inside the variables `longitude` and `latitude`. The variable `mask_land_sea` indicates whether a particular point of the grid corresponds to a `land` point or a `water` point. The variable `time` provides the date corresponding to the 365 daily-averaged values included in this file. The results were taken from a model simulation conducted by St-Laurent using ROMS-ECB (references: https://doi.org/10.17882/99441 , https://doi.org/10.1016/j.ecss.2025.109632 , https://doi.org/10.1029/2023MS003845 ) on the VIMS cluster `James` between 2025-08-30 and 2025-10-28 (runs 1272-1274,1276-1279,1281-1285,1288-1293,1295-1301,1303-1305,1307-1309,1311-1312,1314-1315,1317-1318,1320-1322)." ;
+Author = "Pierre St-Laurent (pst-laurent@vims.edu)" ;
+Created = "12-Jan-2026 12:20:27" ;
