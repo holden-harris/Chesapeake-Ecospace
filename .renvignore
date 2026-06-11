@@ -1,0 +1,11 @@
+# Keep renv's dependency scanner out of the large data/output trees (no R code there).
+# Without this, renv scans ~30k ASCII driver files on every snapshot.
+output-for-ecospace/
+data-inputs/
+make-environmental-drivers/terra-temp/
+hoard/
+*.asc
+*.nc
+*.tif
+*.gif
+*.pdf
