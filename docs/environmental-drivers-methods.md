@@ -12,19 +12,27 @@ format:
 ---
 
 <!-- Quarto-convertible methods draft. Render with:  quarto render environmental-drivers-methods.md  (to .docx/HTML/PDF).
-     TODO before submission: confirm the exact expansion of "CBEFS" and the preferred
-     citation for the model system with P. St-Laurent / Bever et al. (2021). -->
+     Model description integrated from Bever, Friedrichs & St-Laurent (2021), Env. Modelling & Software 140:105036.
+     TODO before submission, confirm with P. St-Laurent: (1) how the hindcast was interpolated from the native
+     ChesROMS grid (~430 m-1 km, 20 vertical levels) to the delivered 336x564 ~600 m stereographic grid, and how
+     the three depth bands (bottom/surface/depth-averaged) were derived; (2) full bibliographic details for the two
+     ROMS-ECB references supplied with the data (DOIs 10.1029/2023MS003845 and 10.1016/j.ecss.2025.109632). -->
 
 ## Environmental data source
 
-Spatially resolved environmental conditions were derived from a hindcast simulation of
-the Chesapeake Bay Environmental Forecast System (CBEFS), a coupled hydrodynamic–
-biogeochemical model based on the Regional Ocean Modeling System with the Estuarine–
-Carbon–Biogeochemistry module (ROMS-ECB; Bever et al. 2021; Clark et al. 2025;
-St-Laurent and Friedrichs 2024). The hindcast was produced by Pierre St-Laurent
-(Virginia Institute of Marine Science) specifically for this study (file series version
-`v20260112`, generated 12 January 2026) and comprises 40 annual files spanning calendar
-years 1985–2024, each containing daily-averaged model fields.
+Spatially resolved environmental conditions were derived from a multidecadal hindcast of
+the Chesapeake Bay Environmental Forecast System (CBEFS; Bever et al. 2021). CBEFS is a
+real-time coupled hydrodynamic–biogeochemical model of Chesapeake Bay built on the
+Chesapeake Bay implementation of the Regional Ocean Modeling System (ChesROMS; Xu et al.
+2012), coupled to the Estuarine–Carbon–Biogeochemistry module (ECB; Feng et al. 2015)
+that carries the carbon and nitrogen state variables — including phytoplankton, nitrate,
+and dissolved oxygen — used here. The 1985–2024 hindcast was produced with this ROMS-ECB
+system by Pierre St-Laurent (Virginia Institute of Marine Science) for the present study
+(file series `v20260112`, generated 12 January 2026) and provided as 40 annual files of
+daily-averaged fields. The hindcast is forced by North American Mesoscale (NAM)
+atmospheric fields, open-boundary tides, water levels, and temperature/salinity from
+operational ocean products, and freshwater discharge with associated riverine
+biogeochemistry for the Bay's major tributaries (Bever et al. 2021).
 
 Five state variables were used, each available at three vertical levels — bottom
 (`_bott`), surface (`_surf`), and depth-averaged (`_davg`) — giving 15 variable–depth
@@ -38,13 +46,21 @@ combinations:
 | `phytoplankton` | phytoplankton concentration | mmol N m⁻³ |
 | `NO3` | nitrate + nitrite | mmol N m⁻³ |
 
-The model fields are defined on a curvilinear grid of 336 (east–west) × 564
-(north–south) cells that is regular in an oblique stereographic projection
-(`+proj=stere +lon_0=283.54 +lat_0=37.75`) with ~600 m spacing. The exact longitude and
-latitude of every grid point are stored as two-dimensional `longitude(y,x)` and
-`latitude(y,x)` arrays within each NetCDF file. Model skill for the underlying
-simulation is documented against the Chesapeake Bay Program monitoring record (1985–
-present) in the model atlas (St-Laurent 2026).
+The CBEFS model is integrated on a curvilinear grid with 20 terrain-following vertical
+levels and a horizontal resolution of roughly 430 m in the northern Bay to ~1 km in the
+middle and southern Bay (Bever et al. 2021). For this study the model output was supplied
+as a regularized hindcast product rather than on that native grid: it was interpolated
+onto a regular 336 (east–west) × 564 (north–south) oblique-stereographic grid
+(`+proj=stere +lon_0=283.54 +lat_0=37.75`, ~600 m spacing) and reduced to three vertical
+representations — bottom, surface, and depth-averaged. The exact longitude and latitude
+of every delivery-grid cell are stored as two-dimensional `longitude(y,x)` and
+`latitude(y,x)` arrays within each NetCDF file; this grid is regular in projection space
+but curvilinear in geographic coordinates, which motivates the regridding approach below.
+CBEFS has been evaluated against the Chesapeake Bay Program Water Quality Monitoring
+Program at 13 mainstem stations using target-diagram skill metrics, with bottom
+temperature, salinity, and dissolved-oxygen skill comparable to other established
+Chesapeake Bay models (Bever et al. 2021; Irby et al. 2016); skill for this specific
+1985–2024 hindcast is documented in the accompanying model atlas (St-Laurent 2026).
 
 ## Temporal aggregation
 
@@ -65,7 +81,9 @@ oblique-stereographic projection — standard raster resampling (e.g. `terra::re
 which assumes a regular source grid) does not apply. Reconstructing the source
 projection analytically would require assumptions about the datum and origin. We
 therefore treated the stored `longitude`/`latitude` arrays as ground truth and regridded
-through them directly.
+through them directly. (The data provider had already interpolated the model output from
+its native ChesROMS grid onto this 600 m stereographic delivery grid; the regridding
+described here is the subsequent step that places those fields onto the Ecospace basemaps.)
 
 Processing kept the native model fields in **index space with no coordinate reference
 system assigned**, and georeferenced **once**, late in the pipeline, at the regridding
@@ -158,16 +176,28 @@ the drivers. This is documented as an open item to correct at the source.
 - Bever, A.J., Friedrichs, M.A.M., St-Laurent, P. (2021). Real-time environmental
   forecasts of the Chesapeake Bay: Model setup, improvements, and online visualization.
   *Environmental Modelling & Software* 140, 105036.
-  https://doi.org/10.1016/j.envsoft.2021.105036
-- St-Laurent, P., Friedrichs, M.A.M. (2024). [ROMS-ECB model description].
-  *Journal of Advances in Modeling Earth Systems*. https://doi.org/10.1029/2023MS003845
-- Clark, J.B. et al. (2025). [Chesapeake Bay biogeochemical modeling study].
-  *Estuarine, Coastal and Shelf Science* 319, 109632.
+  https://doi.org/10.1016/j.envsoft.2021.105036  *(CBEFS system description)*
+- Xu, J., Long, W., Wiggert, J.D., Lanerolle, L.W.J., Brown, C.W., Murtugudde, R.,
+  Hood, R.R. (2012). Climate forcing and salinity variability in Chesapeake Bay, USA.
+  *Estuaries and Coasts* 35(1), 237–261. https://doi.org/10.1007/s12237-011-9423-5
+  *(ChesROMS hydrodynamic model)*
+- Feng, Y., Friedrichs, M.A.M., Wilkin, J., Tian, H., Yang, Q., Hofmann, E.E.,
+  Wiggert, J.D., Hood, R.R. (2015). Quantifying Chesapeake Bay nitrogen fluxes using a
+  land–estuarine ocean biogeochemical modeling system: model description, evaluation and
+  budgets. *Journal of Geophysical Research: Biogeosciences* 120, 1666–1695.
+  https://doi.org/10.1002/2015JG002931  *(ECB biogeochemistry module)*
+- Irby, I.D., Friedrichs, M.A.M., Friedrichs, C.T., Bever, A.J., Hood, R.R., et al.
+  (2016). Challenges associated with modeling low oxygen waters in Chesapeake Bay: a
+  multiple model comparison. *Biogeosciences* 13(7), 2011–2028.
+  https://doi.org/10.5194/bg-13-2011-2016  *(multi-model skill context)*
+- St-Laurent, P. (2026). Chesapeake Bay model atlas — hindcast skill documentation and
+  modeled/observed data archive. https://doi.org/10.17882/99441
+- Additional ROMS-ECB references supplied with the source data (full bibliographic
+  details to confirm): https://doi.org/10.1029/2023MS003845 ;
   https://doi.org/10.1016/j.ecss.2025.109632
-- St-Laurent, P. (2026). Chesapeake Bay model atlas (model skill documentation and
-  modeled/observed data archive). https://doi.org/10.17882/99441
 - Hijmans, R.J. (2024). *terra: Spatial Data Analysis*. R package.
 - R Core Team (2025). *R: A Language and Environment for Statistical Computing*. R 4.5.1.
 
-<!-- Reference details (author lists, titles, years) for the four model DOIs are placeholders
-     pending confirmation; verify against the published records and CBEFS-notes-metadata.txt. -->
+<!-- Bever 2021, Xu 2012, Feng 2015, Irby 2016 were verified from the Bever et al. (2021)
+     reference list. The two DOIs carried in CBEFS-notes-metadata.txt (2023MS003845;
+     ecss.2025.109632) still need full author/title/year — confirm with P. St-Laurent. -->
