@@ -44,7 +44,7 @@ gif_prefixes <- NULL
 
 ## GIF animation year range (inclusive). Only scopes the GIF frames -- PDFs/ASCII
 ## are unaffected. e.g. 2021-2024 for a quick set, or 2000-2024 for the long run.
-gif_start_year <- 2000
+gif_start_year <- 2020
 gif_end_year   <- 2024
 
 ## Output root: relocate the whole grid-<label>/... tree for this run. Overrides
