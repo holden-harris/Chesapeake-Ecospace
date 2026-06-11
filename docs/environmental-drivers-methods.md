@@ -48,7 +48,7 @@ present) in the model atlas (St-Laurent 2026).
 
 ## Temporal aggregation
 
-For the Ecospace application we required monthly fields rather than daily values.
+For the Ecospace application, we required monthly fields rather than daily values.
 Monthly means were computed in a single pass while each annual file was held in memory,
 averaging all daily layers within each calendar month (ignoring missing values). This
 avoided writing and then re-reading the very large combined daily archive (~47 GB),
@@ -58,10 +58,10 @@ the 15 variable–depth combinations, one multi-year monthly stack covering 1985
 
 ## Coordinate system and regridding
 
-The central methodological choice concerns how the curvilinear model output was placed
+Regridding the CBEFS outputs for Ecospace meant placing outputs from a curvilinear model 
 onto the regular geographic grids used by Ecospace. Because the CBEFS grid is
-curvilinear in geographic space — its rows and columns are regular only in the native
-oblique-stereographic projection — standard raster resampling (e.g. `terra::resample`,
+curvilinear in geographic space (i.e., its rows and columns are regular only in the native
+oblique-stereographic projection) standard raster resampling (e.g. `terra::resample`,
 which assumes a regular source grid) does not apply. Reconstructing the source
 projection analytically would require assumptions about the datum and origin. We
 therefore treated the stored `longitude`/`latitude` arrays as ground truth and regridded
@@ -76,13 +76,13 @@ the data and its coordinates is guaranteed to match without any orientation gues
 Second, the geographic transformation is performed exactly once per target grid rather
 than repeatedly for every variable, depth, and month.
 
-Regridding proceeds in two steps. A **regrid index** is built once per target basemap:
+Regridding proceeds in two steps. First, a **regrid index** is built once per target basemap:
 each source cell's (longitude, latitude) pair (with longitudes normalized from the
 0–360° to the −180–180° convention) is mapped to the target basemap cell that contains
 it. The native ~600 m resolution is finer than every target grid, so multiple source
-cells fall within each target cell, and the mapping is many-to-one. The **regridded
-value** for each target cell is then the mean of all source cells assigned to it,
-computed as a vectorized group-mean across all 480 layers in a single pass; missing
+cells fall within each target cell, and the mapping is many-to-one. Second, the **regridded
+value** for each target cell is then computed as the mean of all source cells assigned to it. 
+Specifically, it is calculated as a vectorized group-mean across all 480 layers in a single pass; missing
 source values are excluded per target cell, and target cells receiving no source
 coverage are set to missing. Because the source is finer than the target, this
 many-to-one averaging is the appropriate (mass-preserving in the mean sense) operation
@@ -106,33 +106,34 @@ as integer aggregations of a base depth grid:
 | Label | Grid (rows × cols) | Role |
 |---|---|---|
 | F01 | 176 × 111 | finest |
-| F02 | 88 × 56 | **standard Ecospace grid** |
-| F03 | 59 × 37 | coarse |
-| F04 | 44 × 28 | coarsest |
+| F02 | 88 × 56   | fine |
+| F03 | 59 × 37   | coarse |
+| F04 | 44 × 28   | coarsest |
 
 Producing drivers at several resolutions supports sensitivity analysis of model
 behavior to spatial grain and allows the Ecospace configuration to trade spatial detail
 against computational cost. The native CBEFS grid (336 × 564, here labeled F00) was
 retained for full-resolution visualization and comparison but is not used as an Ecospace
-driver. Because the regrid index is rebuilt per basemap from the same source
-coordinates, drivers at every resolution are mutually consistent and aligned to their
-basemap to the cell.
+driver. 
 
 ## Driver products and quality assurance
 
 For each variable–depth combination and each Ecospace basemap, the regridded monthly
 stack was exported as a time series of ESRI ASCII grids (`<var>_<depth>_YYYY_MM.asc`),
-the native format ingested by Ecospace, with missing values flagged as −9999. A 12-month
-mean climatology was also exported for reference but is not wired in as a model driver. To
+the native format ingested by Ecospace, with missing values flagged as −9999. 
+
+A 12-month mean climatology was also exported for reference but is not wired in as a model driver. To
 keep the driver directories clean for Ecospace import, only the `.asc` grids were written:
 the auxiliary sidecar files that the GIS toolchain emits by default (a projection file and
 two metadata files) were suppressed, as Ecospace reads only the ASCII header.
 
 Two visualization products supported visual quality control across all resolutions
-(including the native grid): multi-panel PDF figures (a 12-panel monthly climatology and a
-per-year monthly sequence for each variable–depth) and GIF animations of the monthly
-fields over user-selected year ranges. These were used to confirm that fields were
-spatially coherent, correctly oriented, and free of regridding artifacts.
+(including the native grid): 
+ - multi-panel PDF figures (a 12-panel monthly climatology and a
+per-year monthly sequence for each variable–depth) and 
+ - GIF animations of the monthly fields over user-selected year ranges. 
+
+These were used to confirm that fields were spatially coherent, correctly oriented, and free of regridding artifacts.
 
 ## Reproducibility and software
 
