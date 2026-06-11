@@ -10,7 +10,9 @@
 ## videos come out of the same loop -- no separate "gif_grid" flag.
 ##
 ## Flat top-to-bottom script: edit the settings block below and Source it, or set
-## `resolutions` / `gif_prefixes` in run-environmental-drivers.R to drive it.
+## `resolutions` / `gif_prefixes` / `gif_start_year` / `gif_end_year` in
+## run-environmental-drivers.R to drive it. gif_prefixes = NULL animates ALL
+## <var>_<depth> (same coverage as PDFs/ASCII); the year range is inclusive.
 ##
 ## Run order: process-CBEFS.R -> regrid-to-basemaps.R -> THIS
 ## -----------------------------------------------------------------------------
@@ -31,12 +33,12 @@ find_monthly_file <- function(prefix, available) {
 ## -----------------------------------------------------------------------------
 ## Settings  (shared selectors fall back to defaults when run standalone)
 
-if (!exists("resolutions"))  resolutions  <- NULL   ## NULL = all (F00..F04)
-if (!exists("gif_prefixes")) gif_prefixes <- c("temperature_davg", "NO3_surf", "diss_o2_bott")
-if (!exists("out_root"))     out_root     <- CBEFS_OUT_ROOT
+if (!exists("resolutions"))    resolutions    <- NULL   ## NULL = all (F00..F04)
+if (!exists("gif_prefixes"))   gif_prefixes   <- NULL   ## NULL = all <var>_<depth>
+if (!exists("gif_start_year")) gif_start_year <- 2021   ## first year in the animation
+if (!exists("gif_end_year"))   gif_end_year   <- 2024   ## last year (inclusive)
+if (!exists("out_root"))       out_root       <- CBEFS_OUT_ROOT
 
-start_year    <- 2021
-num_years     <- 4
 gif_delay     <- 0.25
 gif_width     <- 900
 gif_height    <- 1400
@@ -46,7 +48,8 @@ overwrite_gif <- TRUE
 
 init_terra()  ## shared terra temp dir + progress + memfrac (see cbefs-helpers.R)
 
-end_year   <- start_year + num_years - 1
+start_year <- gif_start_year
+end_year   <- gif_end_year
 start_date <- as.Date(paste0(start_year, "-01-01"))
 end_date   <- as.Date(paste0(end_year,   "-12-31"))
 period_tag <- paste0(start_year, "_", end_year)
@@ -75,10 +78,17 @@ for (r in seq_len(nrow(res))) {
   dir_out   <- file.path(out_root, row$res_dir, GIF_PRODUCT_SUBDIR)
   available <- list_monthly_nc(dir_in)
 
-  cat("\n============================================================\n")
-  log_step(sprintf("GIFs for %s (%s) -> %s", row$label, row$dims, dir_out))
+  ## Variables to animate: explicit subset, or all available when gif_prefixes is NULL.
+  prefixes <- if (is.null(gif_prefixes)) {
+    unique(vapply(available, prefix_from_monthly, character(1)))
+  } else gif_prefixes
 
-  for (prefix in gif_prefixes) {
+  cat("\n============================================================\n")
+  log_step(sprintf("GIFs for %s (%s), %d vars %d-%d -> %s",
+                   row$label, row$dims, length(prefixes),
+                   start_year, end_year, dir_out))
+
+  for (prefix in prefixes) {
 
     st              <- get_var_style(prefix)
     plot_label      <- st$plot_label
@@ -163,6 +173,9 @@ for (r in seq_len(nrow(res))) {
       delay     = gif_delay,
       loop      = TRUE
     )
+
+    ## Frames are now baked into the GIF -- drop the PNG scratch dir.
+    unlink(frame_dir, recursive = TRUE, force = TRUE)
 
     cat("Wrote GIF:", gif_file, "(", length(png_files), "frames )\n")
     gif_log <- rbind(gif_log, data.frame(resolution = row$label, prefix,

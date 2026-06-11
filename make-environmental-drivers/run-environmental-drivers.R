@@ -7,9 +7,10 @@
 ## its own flat script and you toggle the ones you want here.
 ##
 ## How it works: this script sets a few shared globals (resolutions /
-## variables_to_run / gif_prefixes) and then `source()`s the chosen stage scripts.
-## Each stage script is flat top-to-bottom and reads those globals via an
-## `if (!exists(...))` fallback, so it also runs standalone with its own defaults.
+## variables_to_run / gif_prefixes / out_root) and then `source()`s the chosen
+## stage scripts. Each stage script is flat top-to-bottom and reads those globals
+## via an `if (!exists(...))` fallback, so it also runs standalone with its own
+## defaults. There are no orchestration functions -- sourcing a stage runs it.
 ##
 ## Pipeline:
 ##   process-CBEFS.R        (run separately) -> native monthly stacks
@@ -22,9 +23,9 @@
 ## -----------------------------------------------------------------------------
 ## What to run
 
-do_regrid <- TRUE    ## Stage 2: native -> per-basemap regridded NC (basemaps only)
-do_ascii  <- TRUE    ## Stage 3: ASCII drivers (basemaps only)
-do_pdf    <- TRUE    ## Stage 3: PDF plots (all resolutions, incl. native F00)
+do_regrid <- FALSE    ## Stage 2: native -> per-basemap regridded NC (basemaps only)
+do_ascii  <- FALSE    ## Stage 3: ASCII drivers (basemaps only)
+do_pdf    <- FALSE    ## Stage 3: PDF plots (all resolutions, incl. native F00)
 do_gif    <- TRUE    ## Stage 3: GIF animations (all resolutions, incl. native F00)
 
 ## -----------------------------------------------------------------------------
@@ -37,10 +38,19 @@ resolutions <- NULL
 ## Variable subset by <var>_<depth> prefix (e.g. "salinity_bott"); NULL = all.
 variables_to_run <- NULL
 
-## Variables to animate as GIFs (subset of the available prefixes).
-gif_prefixes <- c("temperature_davg", "NO3_surf", "diss_o2_bott")
+## Variables to animate as GIFs: NULL = ALL <var>_<depth> (same coverage as PDFs
+## and ASCII), or a subset vector e.g. c("temperature_davg", "NO3_surf").
+gif_prefixes <- NULL
 
-## Output root (edit to relocate the whole grid-<label>/... tree).
+## GIF animation year range (inclusive). Only scopes the GIF frames -- PDFs/ASCII
+## are unaffected. e.g. 2021-2024 for a quick set, or 2000-2024 for the long run.
+gif_start_year <- 2000
+gif_end_year   <- 2024
+
+## Output root: relocate the whole grid-<label>/... tree for this run. Overrides
+## CBEFS_OUT_ROOT via each stage script's exists() fallback. The product subfolder
+## names (ASCII/PDFs/GIFs) and input dirs are the single source of truth in
+## cbefs-helpers.R ("Canonical paths" block) -- edit them there, not here.
 out_root <- "./output-for-ecospace/env-drivers/CBEFS-hindcast"
 
 ## -----------------------------------------------------------------------------
