@@ -11,6 +11,10 @@ make-environmental-drivers/ches-bay-atlas/
 hoard/
 resources/
 
+## Regenerable environmental-driver outputs (ASCII drivers, PDFs, GIFs, NC stacks);
+## reproduced by re-running the pipeline. Basemaps live under habitat/ and stay tracked.
+output-for-ecospace/env-drivers/
+
 ## NetCDF (ROMS-ECB, CMIP6, downscaled drivers)
 *.nc
 *.nc4

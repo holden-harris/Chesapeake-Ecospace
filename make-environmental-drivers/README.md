@@ -189,9 +189,8 @@ For a full run (5 variables × 3 depths = **15** `<var>_<depth>` combinations):
 
 CBEFS = Chesapeake Bay Environmental Forecast System, a ROMS-ECB hindcast produced by
 **Pierre St-Laurent (VIMS)** for this project (file version `v20260112`, created
-2026-01-12). Delivered on a 336×564 oblique-stereographic grid
-(`+proj=stere +lon_0=283.54 +lat_0=37.75`, ~600 m) — a regularized product; the
-CBEFS/ChesROMS-ECB model itself is integrated at ~430 m–1 km with 20 vertical levels
-(Bever et al. 2021). Source metadata:
+2026-01-12). The hindcast runs on the model's own 336×564 oblique-stereographic
+computational grid (`+proj=stere +lon_0=283.54 +lat_0=37.75`, ~600 m; St-Laurent and
+Friedrichs 2024), delivered with three depth representations (bottom/surface/depth-averaged). Source metadata:
 [`CBEFS-notes-metadata.txt`](CBEFS-notes-metadata.txt). Full attribution, units, and
 references are in the [methods report](../docs/environmental-drivers-methods.md).

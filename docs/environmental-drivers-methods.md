@@ -12,11 +12,12 @@ format:
 ---
 
 <!-- Quarto-convertible methods draft. Render with:  quarto render environmental-drivers-methods.md  (to .docx/HTML/PDF).
-     Model description integrated from Bever, Friedrichs & St-Laurent (2021), Env. Modelling & Software 140:105036.
-     TODO before submission, confirm with P. St-Laurent: (1) how the hindcast was interpolated from the native
-     ChesROMS grid (~430 m-1 km, 20 vertical levels) to the delivered 336x564 ~600 m stereographic grid, and how
-     the three depth bands (bottom/surface/depth-averaged) were derived; (2) full bibliographic details for the two
-     ROMS-ECB references supplied with the data (DOIs 10.1029/2023MS003845 and 10.1016/j.ecss.2025.109632). -->
+     Model description integrated from Bever et al. (2021); St-Laurent & Friedrichs (2024, JAMES, doi:10.1029/2023MS003845);
+     and the Chesapeake Bay atlas documentation (St-Laurent & Friedrichs, doi:10.17882/99441, v2025-12-29).
+     RESOLVED: the 336x564 ~600 m oblique-stereographic grid IS the hindcast model's own computational grid (not an
+     interpolation); depth bands are bottom level, surface level, and water-column mean (per the atlas doc). Both
+     previously-unresolved DOIs are now identified (see References). Remaining nicety: complete the bibliographic
+     entries for the ERA5 (Hersbach 2023) and Phase 6 watershed (Bhatt 2023) forcing datasets. -->
 
 ## Environmental data source
 
@@ -29,10 +30,11 @@ that carries the carbon and nitrogen state variables — including phytoplankton
 and dissolved oxygen — used here. The 1985–2024 hindcast was produced with this ROMS-ECB
 system by Pierre St-Laurent (Virginia Institute of Marine Science) for the present study
 (file series `v20260112`, generated 12 January 2026) and provided as 40 annual files of
-daily-averaged fields. The hindcast is forced by North American Mesoscale (NAM)
-atmospheric fields, open-boundary tides, water levels, and temperature/salinity from
-operational ocean products, and freshwater discharge with associated riverine
-biogeochemistry for the Bay's major tributaries (Bever et al. 2021).
+daily-averaged fields. It is forced by the ERA5 atmospheric reanalysis (Hersbach et al.
+2023), terrestrial freshwater and nutrient loads from the Chesapeake Bay Program Phase 6
+watershed model (Bhatt et al. 2023, distributed across ECB state variables following Irby
+and Friedrichs 2019), and atmospheric nitrogen deposition following Da et al. (2018)
+(St-Laurent and Friedrichs 2024).
 
 Five state variables were used, each available at three vertical levels — bottom
 (`_bott`), surface (`_surf`), and depth-averaged (`_davg`) — giving 15 variable–depth
@@ -46,21 +48,25 @@ combinations:
 | `phytoplankton` | phytoplankton concentration | mmol N m⁻³ |
 | `NO3` | nitrate + nitrite | mmol N m⁻³ |
 
-The CBEFS model is integrated on a curvilinear grid with 20 terrain-following vertical
-levels and a horizontal resolution of roughly 430 m in the northern Bay to ~1 km in the
-middle and southern Bay (Bever et al. 2021). For this study the model output was supplied
-as a regularized hindcast product rather than on that native grid: it was interpolated
-onto a regular 336 (east–west) × 564 (north–south) oblique-stereographic grid
-(`+proj=stere +lon_0=283.54 +lat_0=37.75`, ~600 m spacing) and reduced to three vertical
-representations — bottom, surface, and depth-averaged. The exact longitude and latitude
-of every delivery-grid cell are stored as two-dimensional `longitude(y,x)` and
-`latitude(y,x)` arrays within each NetCDF file; this grid is regular in projection space
-but curvilinear in geographic coordinates, which motivates the regridding approach below.
-CBEFS has been evaluated against the Chesapeake Bay Program Water Quality Monitoring
-Program at 13 mainstem stations using target-diagram skill metrics, with bottom
-temperature, salinity, and dissolved-oxygen skill comparable to other established
-Chesapeake Bay models (Bever et al. 2021; Irby et al. 2016); skill for this specific
-1985–2024 hindcast is documented in the accompanying model atlas (St-Laurent 2026).
+The hindcast was run on the model's own horizontal grid: a 336 (east–west) × 564
+(north–south) grid that is regular in an oblique stereographic projection
+(`+proj=stere +lon_0=283.54 +lat_0=37.75`) at ~600 m resolution. This uniform 600 m
+configuration was developed for the multidecadal hindcast and atlas (St-Laurent and
+Friedrichs 2024), refining the coarser ~430 m–1 km grid of the earlier real-time forecast
+system (Bever et al. 2021). The model resolves the vertical with 20 terrain-following
+levels; the fields delivered here reduce that dimension to three representations per
+variable — bottom (the bottom level), surface (the surface level), and depth-averaged (the
+water-column mean from surface to bottom). The model bathymetry is a mosaic compiled from
+regional bathymetric and coastal-plain elevation datasets (National Geophysical Data Center
+1999; Forte et al. 2011; Pope et al. 2016; Ye et al. 2017; NOAA 2022). The exact longitude
+and latitude of every grid
+cell are stored as two-dimensional `longitude(y,x)` and `latitude(y,x)` arrays within each
+NetCDF file; because the grid is regular in projection space but curvilinear in geographic
+coordinates, it motivates the regridding approach below. The hindcast has been evaluated
+against the Chesapeake Bay Program Water Quality Monitoring Program (over three million
+matched model–observation pairs across 13 variables), with skill comparable to other
+established Chesapeake Bay models (Bever et al. 2021; Irby et al. 2016); skill diagnostics
+for this 1985–2024 hindcast are distributed with the atlas (St-Laurent and Friedrichs 2024).
 
 ## Temporal aggregation
 
@@ -81,9 +87,10 @@ oblique-stereographic projection — standard raster resampling (e.g. `terra::re
 which assumes a regular source grid) does not apply. Reconstructing the source
 projection analytically would require assumptions about the datum and origin. We
 therefore treated the stored `longitude`/`latitude` arrays as ground truth and regridded
-through them directly. (The data provider had already interpolated the model output from
-its native ChesROMS grid onto this 600 m stereographic delivery grid; the regridding
-described here is the subsequent step that places those fields onto the Ecospace basemaps.)
+through them directly. (This 600 m grid is the model's own computational grid, so the
+regridding described here — onto the Ecospace basemaps — is the only horizontal
+interpolation applied to the fields; the provider reduced only the vertical dimension to
+the three depth representations.)
 
 Processing kept the native model fields in **index space with no coordinate reference
 system assigned**, and georeferenced **once**, late in the pipeline, at the regridding
@@ -161,8 +168,8 @@ regridding → product generation) orchestrated by a single entry-point script; 
 and its technical documentation are in the project repository
 (github.com/holden-harris/Chesapeake-Ecospace, `make-environmental-drivers/`). The raw
 CBEFS files and all large raster outputs are excluded from version control and are
-regenerated by re-running the pipeline. Exact package versions can be pinned with `renv`
-for archival reproducibility.
+regenerated by re-running the pipeline. Exact package versions are pinned with `renv`
+(`renv.lock`) for archival reproducibility.
 
 ## Known limitations
 
@@ -176,7 +183,14 @@ the drivers. This is documented as an open item to correct at the source.
 - Bever, A.J., Friedrichs, M.A.M., St-Laurent, P. (2021). Real-time environmental
   forecasts of the Chesapeake Bay: Model setup, improvements, and online visualization.
   *Environmental Modelling & Software* 140, 105036.
-  https://doi.org/10.1016/j.envsoft.2021.105036  *(CBEFS system description)*
+  https://doi.org/10.1016/j.envsoft.2021.105036  *(CBEFS real-time system description)*
+- St-Laurent, P., Friedrichs, M.A.M. (2024). On the sensitivity of coastal hypoxia to its
+  external physical forcings. *Journal of Advances in Modeling Earth Systems* 16,
+  e2023MS003845. https://doi.org/10.1029/2023MS003845
+  *(600 m, 20-level hindcast model configuration)*
+- St-Laurent, P., Friedrichs, M.A.M. (2024). An atlas for physical and biogeochemical
+  conditions in the Chesapeake Bay (documentation v2025-12-29). SEANOE.
+  https://doi.org/10.17882/99441  *(hindcast data product, depth bands, skill diagnostics)*
 - Xu, J., Long, W., Wiggert, J.D., Lanerolle, L.W.J., Brown, C.W., Murtugudde, R.,
   Hood, R.R. (2012). Climate forcing and salinity variability in Chesapeake Bay, USA.
   *Estuaries and Coasts* 35(1), 237–261. https://doi.org/10.1007/s12237-011-9423-5
@@ -190,14 +204,49 @@ the drivers. This is documented as an open item to correct at the source.
   (2016). Challenges associated with modeling low oxygen waters in Chesapeake Bay: a
   multiple model comparison. *Biogeosciences* 13(7), 2011–2028.
   https://doi.org/10.5194/bg-13-2011-2016  *(multi-model skill context)*
-- St-Laurent, P. (2026). Chesapeake Bay model atlas — hindcast skill documentation and
-  modeled/observed data archive. https://doi.org/10.17882/99441
-- Additional ROMS-ECB references supplied with the source data (full bibliographic
-  details to confirm): https://doi.org/10.1029/2023MS003845 ;
-  https://doi.org/10.1016/j.ecss.2025.109632
+- Da, F., Friedrichs, M.A.M., St-Laurent, P. (2018). Impacts of atmospheric nitrogen
+  deposition and coastal nitrogen fluxes on oxygen concentrations in Chesapeake Bay.
+  *Journal of Geophysical Research: Oceans* 123, 5004–5025.
+  https://doi.org/10.1029/2018JC014009  *(atmospheric N deposition)*
+- St-Laurent, P. (2026). Water quality impacts during Hurricane Irene (2011) in a large
+  coastal-plain estuary. *Estuarine, Coastal and Shelf Science* 329, 109632.
+  https://doi.org/10.1016/j.ecss.2025.109632  *(application of the same hindcast)*
+- Hersbach, H., Bell, B., Berrisford, P., Biavati, G., Horányi, A., Muñoz-Sabater, J.,
+  Nicolas, J., Peubey, C., Radu, R., Rozum, I., Schepers, D., Simmons, A., Soci, C.,
+  Dee, D., Thépaut, J.-N. (2023). ERA5 hourly data on single levels from 1940 to present.
+  Copernicus Climate Change Service (C3S) Climate Data Store.
+  https://doi.org/10.24381/cds.adbb2d47  *(atmospheric forcing)*
+- Bhatt, G., Linker, L., Shenk, G., Bertani, I., Tian, R., Rigelman, J., Hinson, K.,
+  Claggett, P. (2023). Water quality impacts of climate change, land use, and population
+  growth in the Chesapeake Bay watershed. *Journal of the American Water Resources
+  Association*, 1–29. https://doi.org/10.1111/1752-1688.13144
+  *(Phase 6 watershed terrestrial loads)*
+- Irby, I.D., Friedrichs, M.A.M. (2019). Evaluating confidence in the impact of regulatory
+  nutrient reduction on Chesapeake Bay water quality. *Estuaries and Coasts* 42, 16–32.
+  https://doi.org/10.1007/s12237-018-0440-5  *(distribution of loads to ECB state variables)*
+- National Geophysical Data Center (1999). 3 arc-second Coastal Relief Model (CRM),
+  Volume 2 (Southeast Atlantic). NOAA. https://doi.org/10.7289/V53R0QR5
+  *(model bathymetry source)*
+- Forte, M.F., Hanson, J.L., Stillwell, L., Blanchard-Montgomery, M., Blanton, B.,
+  Luettich, R., Roberts, H., Atkinson, J., Miller, J. (2011). FEMA Region III storm surge
+  study: Coastal storm surge analysis system digital elevation model. ERDC/CHL TR-11-1,
+  U.S. Army Corps of Engineers, Engineer Research and Development Center.
+  *(model topography source)*
+- Pope, J.P., Andreasen, D.C., McFarland, E.R., Watt, M.K. (2016). Digital elevations and
+  extents of regional hydrogeologic units in the northern Atlantic Coastal Plain aquifer
+  system from Long Island, New York, to North Carolina. U.S. Geological Survey data
+  release. https://doi.org/10.5066/F70V89WN  *(model topography source)*
+- Ye, F., Zhang, Y.J., Wang, H.V., Friedrichs, M.A.M., Irby, I.D., Valle-Levinson, A.,
+  Wang, Z., Huang, H., Shen, J., Du, J. (2017). Assessment of a 3D unstructured-grid model
+  for the Chesapeake Bay and adjacent shelf: Supplementary materials. William & Mary
+  ScholarWorks. https://doi.org/10.21220/V5HK5S  *(model bathymetry source)*
+- NOAA (2022). Estuarine bathymetric digital elevation models. NOAA National Centers for
+  Environmental Information (NCEI).
+  https://www.ngdc.noaa.gov/mgg/bathymetry/estuarine/index.html (accessed 2022-11-02)
+  *(model bathymetry source)*
 - Hijmans, R.J. (2024). *terra: Spatial Data Analysis*. R package.
 - R Core Team (2025). *R: A Language and Environment for Statistical Computing*. R 4.5.1.
 
-<!-- Bever 2021, Xu 2012, Feng 2015, Irby 2016 were verified from the Bever et al. (2021)
-     reference list. The two DOIs carried in CBEFS-notes-metadata.txt (2023MS003845;
-     ecss.2025.109632) still need full author/title/year — confirm with P. St-Laurent. -->
+<!-- All references verified against the source PDFs in resources/CBEFS/ (Bever 2021;
+     St-Laurent & Friedrichs 2024 JAMES; the Chesapeake Bay atlas documentation + its
+     reference list for ERA5/Phase 6/Irby & Friedrichs; St-Laurent 2026). -->
