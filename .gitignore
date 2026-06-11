@@ -9,6 +9,7 @@
 ## Folders
 make-environmental-drivers/ches-bay-atlas/
 hoard/
+resources/
 
 ## NetCDF (ROMS-ECB, CMIP6, downscaled drivers)
 *.nc
@@ -56,6 +57,8 @@ hoard/
 ## Local configuration files
 *.Renviron
 *.Rprofile
+## but DO track the project .Rprofile (renv activation — required on clone)
+!.Rprofile
 .Rproj.user/
 .Rhistory
 .RData
@@ -89,9 +92,16 @@ venv/
 *.gif
 make-environmental-drivers/GIFs/
 
+## terra scratch dir (init_terra() temp tiles -- .tif/.vrt/.gri, fully disposable)
+make-environmental-drivers/terra-temp/
+
+## GIF frame scratch (PNGs encoded into the .gif, then disposable)
+gif-frames/
+
 ## Monthly TIFF aggregates written by make-gif-videos.R (regenerable)
 ## Note: var-stack-TIFF and var-stack-NC outputs are also large; NC outputs are
-## already excluded by *.nc above.
+## already excluded by *.nc above -- this includes var-stack-NC-daily/ (~47 GB),
+## which is kept locally for possible future use but intentionally never pushed.
 
 ### -----------------------------
 ###  MISC PROJECT FILES
