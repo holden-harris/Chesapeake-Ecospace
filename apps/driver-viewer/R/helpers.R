@@ -124,31 +124,31 @@ load_mask <- function(res) {
 ## --- Coastline + state boundaries (rnaturalearth, cropped to F02 extent) -----
 ## Falls back to medium-scale coastline if rnaturalearthhires is unavailable.
 
+## Read a prebuilt overlay .rds from OVERLAY_DIR, or NULL if absent / not in
+## deployed mode. OVERLAY_DIR is set by app.R (NULL in local-dev mode).
+read_overlay_rds <- function(name) {
+  if (is.null(get0("OVERLAY_DIR", ifnotfound = NULL))) return(NULL)
+  f <- file.path(OVERLAY_DIR, name)
+  if (file.exists(f)) readRDS(f) else NULL
+}
+
+## Source the (non-bundled) overlay builders for the local-dev fallback path.
+ensure_prebuild <- function() {
+  if (!exists("build_coast", mode = "function")) {
+    source(file.path(get0("APP_DIR", ifnotfound = "."), "R", "prebuild.R"),
+           local = FALSE)
+  }
+}
+
 load_coast <- function(res) {
   if (!is.null(.cache$coast)) return(.cache$coast)
-  if (!requireNamespace("sf", quietly = TRUE) ||
-      !requireNamespace("rnaturalearth", quietly = TRUE)) {
-    .cache$coast <- NA                                     # sentinel: skip overlay
-    return(NA)
-  }
+  ## Deployed: read the prebaked overlay (no rnaturalearth needed at runtime).
+  pre <- read_overlay_rds("coast.rds")
+  if (!is.null(pre)) { .cache$coast <- pre; return(pre) }
+  ## Local-dev fallback: build it now via prebuild.R.
+  ensure_prebuild()
   e <- as.vector(terra::ext(load_mask(res)))   # named: xmin, xmax, ymin, ymax
-  bb <- sf::st_bbox(c(xmin = e[["xmin"]], ymin = e[["ymin"]],
-                      xmax = e[["xmax"]], ymax = e[["ymax"]]), crs = 4326)
-  ## Prefer high-res MD/VA state boundaries (needs rnaturalearthhires); fall back
-  ## to the medium-scale coastline (needs rnaturalearthdata) if it is unavailable.
-  states <- if (requireNamespace("rnaturalearthhires", quietly = TRUE)) {
-    tryCatch(rnaturalearth::ne_states(country = "United States of America",
-                                      returnclass = "sf"),
-             error = function(err) NA)
-  } else if (requireNamespace("rnaturalearthdata", quietly = TRUE)) {
-    tryCatch(rnaturalearth::ne_coastline(scale = "medium", returnclass = "sf"),
-             error = function(err) NA)
-  } else {
-    NA
-  }
-  if (inherits(states, "logical")) { .cache$coast <- NA; return(NA) }
-  states <- sf::st_transform(states, 4326)
-  coast  <- suppressWarnings(sf::st_crop(states, bb))
+  coast <- build_coast(e)
   .cache$coast <- coast
   coast
 }
@@ -173,31 +173,14 @@ load_gridlines <- function(res) {
 
 load_juris <- function(res) {
   if (!is.null(.cache$juris)) return(.cache$juris)
-  if (!requireNamespace("sf", quietly = TRUE) ||
-      !exists("JURIS_SRC") || !file.exists(JURIS_SRC)) {
-    .cache$juris <- NA
-    return(NA)
-  }
-  e  <- as.vector(terra::ext(load_mask(res)))
-  j  <- terra::project(terra::rast(JURIS_SRC), "EPSG:4326", method = "near")
-  jp <- sf::st_make_valid(sf::st_as_sf(
-          terra::as.polygons(j, dissolve = TRUE, na.rm = TRUE)))
-  names(jp)[1] <- "code"
-  geom_of <- function(code) sf::st_geometry(jp[jp$code == code, ])
-  shared <- function(a, b) {
-    if (length(a) == 0 || length(b) == 0) return(NULL)
-    g <- suppressWarnings(sf::st_intersection(sf::st_boundary(a), sf::st_boundary(b)))
-    g <- sf::st_collection_extract(g, "LINESTRING")
-    if (length(g) == 0) NULL else sf::st_union(g)
-  }
-  md <- geom_of(1); va <- geom_of(2); pot <- geom_of(3)
-  parts <- Filter(Negate(is.null),
-                  list(shared(md, va), shared(md, pot), shared(va, pot)))
-  if (length(parts) == 0) { .cache$juris <- NA; return(NA) }
-  bnd <- sf::st_sf(geometry = do.call(c, parts))
-  bb  <- sf::st_bbox(c(xmin = e[["xmin"]], ymin = e[["ymin"]],
-                       xmax = e[["xmax"]], ymax = e[["ymax"]]), crs = 4326)
-  bnd <- suppressWarnings(sf::st_crop(bnd, bb))
+  ## Deployed: read the prebaked overlay.
+  pre <- read_overlay_rds("juris.rds")
+  if (!is.null(pre)) { .cache$juris <- pre; return(pre) }
+  ## Local-dev fallback: build it now via prebuild.R from the source raster.
+  ensure_prebuild()
+  e   <- as.vector(terra::ext(load_mask(res)))
+  src <- get0("JURIS_SRC", ifnotfound = NULL)
+  bnd <- build_juris(e, src)
   .cache$juris <- bnd
   bnd
 }

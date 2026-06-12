@@ -56,19 +56,60 @@ long as it lives at `apps/driver-viewer/` inside the repo.
   constants in `cbefs-helpers.R`). Change inputs or add a resolution there
   without touching the rest of the code.
 
+## Run modes
+
+The app auto-detects how it is being run from the top of `app.R`:
+
+- **Local dev** (no `data/` folder): reads the NetCDF/basemaps straight from the
+  repo's `output-for-ecospace/` tree and builds the coastline + jurisdiction
+  overlays on the fly via `R/prebuild.R`.
+- **Deployed** (a `data/` folder is present): reads everything from that
+  self-contained folder, including prebaked overlay `.rds` — so the deployed
+  bundle needs no `rnaturalearth*` packages at runtime.
+
 ## Files
 
 | File | Purpose |
 |------|---------|
-| `app.R` | Config block + Shiny UI + server |
+| `app.R` | Config block (run-mode detection) + Shiny UI + server |
 | `R/helpers.R` | Data loading, month index/dedup, per-variable domains, overlays, `plot_driver()` |
-| `smoke-test.R` | Headless dev check (renders one panel + a multi-panel composite); not part of the app runtime |
+| `R/prebuild.R` | Builds the coastline + MD/VA/Potomac overlays (uses `rnaturalearth*`); run at staging, **excluded from the deploy bundle** |
+| `deploy/stage-data.R` | Assembles the self-contained `data/` folder (F02–F04 stacks, basemaps, prebaked overlays) |
+| `deploy/deploy.R` | Publishes to shinyapps.io |
+| `smoke-test.R` | Headless dev check; not part of the app runtime |
+
+## Deploying to shinyapps.io
+
+Gives collaborators a public URL (no R needed on their end). Bundles **F02 + F03 +
+F04** (~232 MB); F01 is omitted to keep uploads fast.
+
+```r
+install.packages("rsconnect")                       # once
+# Authenticate with YOUR token: shinyapps.io dashboard -> Account -> Tokens:
+rsconnect::setAccountInfo(name="<acct>", token="<token>", secret="<secret>")
+```
+
+Then, from the **repo root**:
+
+```sh
+Rscript apps/driver-viewer/deploy/stage-data.R      # build data/ (re-run if drivers change)
+Rscript apps/driver-viewer/deploy/deploy.R          # upload -> https://<acct>.shinyapps.io/ches-icat-env-drivers/
+```
+
+Notes: free-tier links are **public** (password needs a paid plan); the app
+**sleeps when idle** and cold-starts in a few seconds; each redeploy re-uploads
+the full bundle (~2 min). `deploy.R` passes an explicit `appFiles` list so
+`R/prebuild.R` and `deploy/` are excluded from both the upload and the dependency
+manifest — that is what keeps the non-CRAN `rnaturalearthhires` out of the deploy.
 
 ## Dependencies
 
-`shiny`, `terra`, `ggplot2`, `patchwork`, `viridisLite`, `sf`, `rnaturalearth`,
-`rnaturalearthdata`, `rnaturalearthhires`, `scales`. All are pinned in the
-repo-level `renv.lock`; run `renv::restore()` to reproduce the library.
+**Runtime (deployed):** `shiny`, `terra`, `sf`, `ggplot2`, `patchwork`, `scales`,
+`viridisLite` — all CRAN/PPM, so shinyapps.io installs them cleanly.
+
+**Staging / local dev only:** `rnaturalearth`, `rnaturalearthdata`,
+`rnaturalearthhires` (for building the overlays), plus `rsconnect` (to deploy).
 `rnaturalearthhires` comes from the rOpenSci R-universe
-(`https://ropensci.r-universe.dev`); if it is unavailable the coastline falls
-back to the medium-scale `rnaturalearthdata` coastline automatically.
+(`https://ropensci.r-universe.dev`); if unavailable, `build_coast()` falls back to
+the medium-scale `rnaturalearthdata` coastline. All are pinned in the repo-level
+`renv.lock` (`renv::restore()` to reproduce).

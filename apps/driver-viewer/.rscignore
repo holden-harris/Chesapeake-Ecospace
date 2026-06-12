@@ -1,0 +1,3 @@
+smoke-test.R
+R/prebuild.R
+deploy/
