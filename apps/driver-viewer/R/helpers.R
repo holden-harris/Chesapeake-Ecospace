@@ -25,6 +25,7 @@ suppressPackageStartupMessages({
 .cache$masks   <- list()   # res label -> SpatRaster land/water mask
 .cache$coast   <- NULL     # sf coastline+states, cropped to extent
 .cache$gridln  <- list()   # res label -> sf cell-edge outline
+.cache$juris   <- NULL     # sf MD/VA/Potomac dividing lines, cropped to extent
 
 ## --- Path building (mirrors cbefs-helpers.R::stack_dir_for) -------------------
 
@@ -163,12 +164,51 @@ load_gridlines <- function(res) {
   g
 }
 
+## --- Jurisdictional boundaries (MD / VA / Potomac dividing lines) -------------
+## Polygonize the high-res source jurisdiction raster (1 = MD, 2 = VA,
+## 3 = Potomac; from JURIS_SRC), then extract the lines SHARED between adjacent
+## jurisdictions — i.e. the internal dividing boundaries, not each region's full
+## (coastline-following) perimeter. Resolution-independent: the lines are vector
+## and only cropped to the basemap extent, so one cache serves all of F01-F04.
+
+load_juris <- function(res) {
+  if (!is.null(.cache$juris)) return(.cache$juris)
+  if (!requireNamespace("sf", quietly = TRUE) ||
+      !exists("JURIS_SRC") || !file.exists(JURIS_SRC)) {
+    .cache$juris <- NA
+    return(NA)
+  }
+  e  <- as.vector(terra::ext(load_mask(res)))
+  j  <- terra::project(terra::rast(JURIS_SRC), "EPSG:4326", method = "near")
+  jp <- sf::st_make_valid(sf::st_as_sf(
+          terra::as.polygons(j, dissolve = TRUE, na.rm = TRUE)))
+  names(jp)[1] <- "code"
+  geom_of <- function(code) sf::st_geometry(jp[jp$code == code, ])
+  shared <- function(a, b) {
+    if (length(a) == 0 || length(b) == 0) return(NULL)
+    g <- suppressWarnings(sf::st_intersection(sf::st_boundary(a), sf::st_boundary(b)))
+    g <- sf::st_collection_extract(g, "LINESTRING")
+    if (length(g) == 0) NULL else sf::st_union(g)
+  }
+  md <- geom_of(1); va <- geom_of(2); pot <- geom_of(3)
+  parts <- Filter(Negate(is.null),
+                  list(shared(md, va), shared(md, pot), shared(va, pot)))
+  if (length(parts) == 0) { .cache$juris <- NA; return(NA) }
+  bnd <- sf::st_sf(geometry = do.call(c, parts))
+  bb  <- sf::st_bbox(c(xmin = e[["xmin"]], ymin = e[["ymin"]],
+                       xmax = e[["xmax"]], ymax = e[["ymax"]]), crs = 4326)
+  bnd <- suppressWarnings(sf::st_crop(bnd, bb))
+  .cache$juris <- bnd
+  bnd
+}
+
 ## --- One panel ---------------------------------------------------------------
-## var x depth at one month_index. Grey land underlay + viridis/HCL fill +
-## optional coastline and grid outline, extent/aspect locked north-up.
+## var x depth at one month_index. viridis/HCL water raster on a white panel +
+## optional coastline, jurisdiction boundaries, and grid outline; extent/aspect
+## locked north-up.
 
 plot_driver <- function(res, var, depth, midx,
-                        show_mask = TRUE, show_coast = TRUE, show_grid = FALSE) {
+                        show_coast = TRUE, show_juris = FALSE, show_grid = FALSE) {
   stacks <- load_stacks(res)
   key    <- paste0(var, "_", depth)
   r      <- stacks[[key]]
@@ -187,13 +227,7 @@ plot_driver <- function(res, var, depth, midx,
   dom  <- var_domain(res, var)
   cols <- grDevices::hcl.colors(256, palette = style$palette, rev = style$rev)
 
-  p <- ggplot()
-  if (show_mask) {
-    md <- terra::as.data.frame(load_mask(res), xy = TRUE, na.rm = TRUE)
-    names(md)[3] <- "depth"
-    p <- p + geom_raster(data = md, aes(x = .data$x, y = .data$y), fill = "grey80")
-  }
-  p <- p +
+  p <- ggplot() +
     geom_raster(data = df, aes(x = .data$x, y = .data$y, fill = .data$value)) +
     scale_fill_gradientn(colours = cols, limits = dom, oob = scales::squish,
                          name = style$units)
@@ -201,6 +235,15 @@ plot_driver <- function(res, var, depth, midx,
   coast <- if (show_coast) load_coast(res) else NA
   if (inherits(coast, "sf")) {
     p <- p + geom_sf(data = coast, fill = NA, color = "grey20", linewidth = 0.25)
+  }
+  if (show_juris) {
+    jb <- load_juris(res)
+    if (inherits(jb, "sf")) {
+      ## white halo under a magenta line so the boundary reads over any palette.
+      p <- p +
+        geom_sf(data = jb, color = "white",   linewidth = 0.9) +
+        geom_sf(data = jb, color = "#d01c8b", linewidth = 0.4)
+    }
   }
   if (show_grid) {
     g <- load_gridlines(res)
@@ -215,7 +258,7 @@ plot_driver <- function(res, var, depth, midx,
     ggtitle(panel_title(var, depth)) +
     theme_minimal(base_size = 11) +
     theme(axis.title = element_blank(),
-          panel.background = element_rect(fill = "grey80", color = NA),
+          panel.background = element_rect(fill = "white", color = NA),
           panel.grid = element_blank(),
           plot.title = element_text(face = "bold", size = 11))
 }

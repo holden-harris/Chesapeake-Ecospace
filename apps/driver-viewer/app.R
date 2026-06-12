@@ -23,6 +23,9 @@ REPO_ROOT   <- normalizePath(file.path(APP_DIR, "..", ".."), mustWork = FALSE)
 OUT_ROOT      <- file.path(REPO_ROOT, "output-for-ecospace/env-drivers/CBEFS-hindcast")
 BASEMAP_DIR   <- file.path(REPO_ROOT, "output-for-ecospace/habitat/basemaps")
 REGRID_SUBDIR <- "var-stack-NC-monthly-regridded"
+## High-res jurisdiction source (1 = Maryland, 2 = Virginia, 3 = Potomac); used
+## for the MD/VA/Potomac boundary overlay (see helpers.R::load_juris).
+JURIS_SRC     <- file.path(REPO_ROOT, "data-inputs/spatial-static/jurisdictions/jurisraster.tif")
 
 RESOLUTIONS <- c("F01-176x111", "F02-88x56", "F03-59x37", "F04-44x28")  # F00 has no regrid
 DEFAULT_RES <- "F02-88x56"
@@ -50,13 +53,29 @@ VAR_STYLES <- list(
                        palette = "Purples", rev = FALSE)
 )
 
-VAR_CHOICES   <- setNames(VARS,   vapply(VARS, function(v) VAR_STYLES[[v]]$label, ""))
 DEPTH_LABELS  <- list(surf = "Surface", bott = "Bottom", davg = "Depth-averaged")
-DEPTH_CHOICES <- setNames(DEPTHS, unlist(DEPTH_LABELS[DEPTHS]))
 
+## Mix-and-match panel picker: every variable x depth combination as one choice,
+## so any arbitrary set (e.g. bottom salinity + surface temperature) can be shown.
+## Key = "<var>|<depth>"; canonical order = variable-major (all depths of a var
+## together) so the panel layout is stable regardless of selection order.
+COMBO_KEYS  <- unlist(lapply(VARS, function(v) paste(v, DEPTHS, sep = "|")))
+combo_label <- function(k) {
+  p <- strsplit(k, "|", fixed = TRUE)[[1]]
+  paste0(VAR_STYLES[[p[1]]]$label, " — ", DEPTH_LABELS[[p[2]]])
+}
+COMBO_CHOICES  <- setNames(COMBO_KEYS, vapply(COMBO_KEYS, combo_label, ""))
+DEFAULT_COMBOS <- c("salinity|bott", "temperature|davg", "diss_o2|bott",
+                    "phytoplankton|surf")
+
+MAX_COLS   <- 4L   # panels fill left-to-right up to this many, then wrap to a new row
 MAX_PANELS <- 8L
 
-source(file.path(APP_DIR, "R", "helpers.R"), local = FALSE)
+## Source helpers into THIS environment (not globalenv) so the helper functions
+## close over the config constants above. Under shiny::runApp, app.R is evaluated
+## in a local environment, so local = FALSE would leave the helpers unable to see
+## VARS/DEPTHS/VAR_STYLES/etc. via lexical scope.
+source(file.path(APP_DIR, "R", "helpers.R"), local = TRUE)
 
 ## --- month <-> index helpers (480 months, 1985-01 .. 2024-12) ----------------
 idx_to_label <- function(res, i) month_index(res)$label[i]
@@ -74,11 +93,9 @@ ui <- fluidPage(
     sidebarPanel(
       width = 3,
       selectInput("res", "Grid resolution", choices = RESOLUTIONS, selected = DEFAULT_RES),
-      checkboxGroupInput("vars", "Variables", choices = VAR_CHOICES,
-                         selected = c("salinity", "temperature", "diss_o2",
-                                      "phytoplankton", "NO3")),
-      checkboxGroupInput("depths", "Depths", choices = DEPTH_CHOICES,
-                         selected = c("bott", "surf")),
+      selectizeInput("combos", "Panels (variable — depth)", choices = COMBO_CHOICES,
+                     selected = DEFAULT_COMBOS, multiple = TRUE,
+                     options = list(plugins = list("remove_button"))),
       uiOutput("panel_warn"),
       tags$hr(),
       sliderInput("midx", "Month", min = 1, max = 480, value = 1, step = 1,
@@ -96,12 +113,14 @@ ui <- fluidPage(
         actionButton("pause", "❚❚ Pause"),
         actionButton("step",  "▶❘ Step")
       ),
-      sliderInput("speed", "Animation speed (ms/frame)",
-                  min = 200, max = 2000, value = 600, step = 100),
+      radioButtons("speed", "Animation speed",
+                   choices = c("Slow" = 1500, "Medium" = 800,
+                               "Fast" = 400, "Very fast" = 150),
+                   selected = 800, inline = TRUE),
       tags$hr(),
-      checkboxInput("show_mask",  "Land mask",    value = TRUE),
-      checkboxInput("show_coast", "Coastline",    value = TRUE),
-      checkboxInput("show_grid",  "Grid outline", value = FALSE)
+      checkboxInput("show_coast", "Coastline",                       value = TRUE),
+      checkboxInput("show_juris", "Jurisdictions (MD/VA/Potomac)",   value = TRUE),
+      checkboxInput("show_grid",  "Grid outline",                    value = FALSE)
     ),
     mainPanel(
       width = 9,
@@ -159,7 +178,7 @@ server <- function(input, output, session) {
   })
   observe({
     if (!playing()) return()
-    invalidateLater(input$speed, session)
+    invalidateLater(as.numeric(input$speed), session)
     isolate({
       n <- n_months(input$res)
       updateSliderInput(session, "midx", value = (input$midx %% n) + 1)
@@ -168,9 +187,9 @@ server <- function(input, output, session) {
 
   ## --- Panel-count warning ---------------------------------------------------
   output$panel_warn <- renderUI({
-    n <- length(input$vars) * length(input$depths)
+    n <- length(input$combos)
     if (n == 0) {
-      div(style = "color:#a00;", "Select at least one variable and one depth.")
+      div(style = "color:#a00;", "Select at least one panel.")
     } else if (n > MAX_PANELS) {
       div(style = "color:#a60;",
           sprintf("%d panels selected (> %d). Rendering may be slow.", n, MAX_PANELS))
@@ -179,20 +198,21 @@ server <- function(input, output, session) {
 
   ## --- Main render -----------------------------------------------------------
   output$panels <- renderPlot({
-    req(length(input$vars) > 0, length(input$depths) > 0)
+    req(length(input$combos) > 0)
     res  <- input$res
     midx <- input$midx
-    ## var x depth grid, variables grouped together (rows = variables).
-    combos <- expand.grid(depth = input$depths, var = input$vars,
-                          stringsAsFactors = FALSE)
-    plots <- Map(function(v, d)
-      plot_driver(res, v, d, midx,
-                  show_mask  = input$show_mask,
+    ## Render the selected combos in canonical (variable-major) order, filling
+    ## left-to-right up to MAX_COLS panels per row, then wrapping to a new row.
+    keys  <- COMBO_KEYS[COMBO_KEYS %in% input$combos]
+    plots <- lapply(keys, function(k) {
+      p <- strsplit(k, "|", fixed = TRUE)[[1]]
+      plot_driver(res, p[1], p[2], midx,
                   show_coast = input$show_coast,
-                  show_grid  = input$show_grid),
-      combos$var, combos$depth)
+                  show_juris = input$show_juris,
+                  show_grid  = input$show_grid)
+    })
 
-    patchwork::wrap_plots(plots, ncol = length(input$depths)) +
+    patchwork::wrap_plots(plots, ncol = min(MAX_COLS, length(plots))) +
       patchwork::plot_annotation(
         title = idx_to_label(res, midx),
         theme = ggplot2::theme(

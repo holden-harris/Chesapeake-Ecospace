@@ -20,13 +20,16 @@ long as it lives at `apps/driver-viewer/` inside the repo.
 
 - **Variables:** salinity, temperature, dissolved oxygen, phytoplankton, nitrate.
 - **Depths:** surface, bottom, depth-averaged.
-- **Panels** = selected variables × selected depths (a warning appears above 8
-  panels). Each panel is a `ggplot2` `geom_raster` map with a grey land mask, an
-  `rnaturalearth` coastline + MD/VA state boundaries, an optional grid outline,
-  and a per-variable color bar with units.
+- **Panels** = a mix-and-match picker over all variable × depth combinations, so
+  any arbitrary set can be shown (a warning appears above 8 panels). Panels fill
+  left-to-right up to 4 per row, then wrap. The default view is Salinity — Bottom,
+  Temperature — Depth-averaged, Dissolved oxygen — Bottom, Phytoplankton — Surface.
+  Each panel is a `ggplot2` `geom_raster` map on a white background with an
+  `rnaturalearth` coastline, optional **MD/VA/Potomac jurisdictional boundaries**
+  and grid outline, and a per-variable color bar with units.
 - **Time:** a 480-step month slider (1985-01 … 2024-12) plus a year + month
-  jump-to, kept in sync. Play / Pause / Step animate through months at an
-  adjustable ms/frame speed.
+  jump-to, kept in sync. Play / Pause / Step animate through months at a
+  selectable speed (Slow / Medium / Fast / Very fast).
 - **Resolution:** switch live between **F01, F02, F03, F04**; F02 (88×56) is the
   default. Switching reloads the stacks (memoised, so switching back is instant).
 
