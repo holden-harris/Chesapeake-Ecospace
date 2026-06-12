@@ -1,0 +1,10 @@
+name: ches-icat-env-drivers
+title: Chesapeake environmental drivers (Ches-ICAT)
+username: holdenharris
+account: holdenharris
+server: shinyapps.io
+hostUrl: https://api.shinyapps.io/v1
+appId: 17503630
+bundleId: 12121386
+url: https://holdenharris.shinyapps.io/ches-icat-env-drivers/
+version: 1

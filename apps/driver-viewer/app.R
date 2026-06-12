@@ -18,16 +18,32 @@ APP_DIR     <- if (nzchar(Sys.getenv("SHINY_APP_DIR"))) {
                } else {
                  getwd()
                }
-REPO_ROOT   <- normalizePath(file.path(APP_DIR, "..", ".."), mustWork = FALSE)
-
-OUT_ROOT      <- file.path(REPO_ROOT, "output-for-ecospace/env-drivers/CBEFS-hindcast")
-BASEMAP_DIR   <- file.path(REPO_ROOT, "output-for-ecospace/habitat/basemaps")
 REGRID_SUBDIR <- "var-stack-NC-monthly-regridded"
-## High-res jurisdiction source (1 = Maryland, 2 = Virginia, 3 = Potomac); used
-## for the MD/VA/Potomac boundary overlay (see helpers.R::load_juris).
-JURIS_SRC     <- file.path(REPO_ROOT, "data-inputs/spatial-static/jurisdictions/jurisraster.tif")
 
-RESOLUTIONS <- c("F01-176x111", "F02-88x56", "F03-59x37", "F04-44x28")  # F00 has no regrid
+## Two run modes, auto-detected:
+##  * DEPLOYED — a self-contained `data/` folder (created by deploy/stage-data.R)
+##    sits inside the app dir. Used on shinyapps.io, where only files under the
+##    app dir are bundled. Overlays are read from prebaked .rds (no rnaturalearth).
+##  * LOCAL DEV — no `data/`; read straight from the repo's output tree and build
+##    overlays on the fly via R/prebuild.R.
+DATA_DIR <- file.path(APP_DIR, "data")
+if (dir.exists(DATA_DIR)) {
+  OUT_ROOT    <- file.path(DATA_DIR, "env-drivers")
+  BASEMAP_DIR <- file.path(DATA_DIR, "basemaps")
+  OVERLAY_DIR <- file.path(DATA_DIR, "overlays")   # coast.rds, juris.rds
+  JURIS_SRC   <- NULL                              # not needed; overlays prebaked
+} else {
+  REPO_ROOT   <- normalizePath(file.path(APP_DIR, "..", ".."), mustWork = FALSE)
+  OUT_ROOT    <- file.path(REPO_ROOT, "output-for-ecospace/env-drivers/CBEFS-hindcast")
+  BASEMAP_DIR <- file.path(REPO_ROOT, "output-for-ecospace/habitat/basemaps")
+  OVERLAY_DIR <- NULL                              # build overlays at runtime
+  ## High-res jurisdiction source (1 = Maryland, 2 = Virginia, 3 = Potomac).
+  JURIS_SRC   <- file.path(REPO_ROOT, "data-inputs/spatial-static/jurisdictions/jurisraster.tif")
+}
+
+## Grids the app exposes. F01 (176x111, ~539 MB) is omitted from the deployable
+## set on purpose; add it back here and in deploy/stage-data.R if needed.
+RESOLUTIONS <- c("F02-88x56", "F03-59x37", "F04-44x28")
 DEFAULT_RES <- "F02-88x56"
 YEAR_START  <- 1985L
 YEAR_END    <- 2024L
