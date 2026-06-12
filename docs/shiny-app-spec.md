@@ -21,9 +21,10 @@ Companion docs:
 
 ## 1. Purpose & audience
 
-A read-only viewer of monthly CBEFS ROMS-ECB hindcast drivers (1985–2024) on the
-Ecospace **F02 (88×56)** grid. Internal use by project stakeholders to explore
-spatial/seasonal/interannual patterns — not a public deployment.
+A read-only viewer of monthly CBEFS ROMS-ECB hindcast drivers (1985–2024). Ultimately, we'll make 
+all resolutaions; however, let's start by building a minimum viable product on the
+Ecospace **F02 (88×56)** grid. For now, this is for internal use by project stakeholders to explore
+spatial/seasonal/interannual patterns; it's not a public deployment.
 
 ---
 
