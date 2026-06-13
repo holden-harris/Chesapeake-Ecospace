@@ -19,6 +19,10 @@ format:
      previously-unresolved DOIs are now identified (see References). Remaining nicety: complete the bibliographic
      entries for the ERA5 (Hersbach 2023) and Phase 6 watershed (Bhatt 2023) forcing datasets. -->
 
+## Repository and technical documentation
+
+Technical documentation of the workflow and reproduction are available here: [`../make-environmental-drivers/`](../make-environmental-drivers/) 
+
 ## Environmental data source
 
 Spatial-temporal environmental drivers were developed for the Ches-ICAT from a multidecadal hindcast of
@@ -121,14 +125,12 @@ keep the driver directories clean for Ecospace import, only the `.asc` grids wer
 the auxiliary sidecar files that the GIS toolchain emits by default (a projection file and
 two metadata files) were suppressed, as Ecospace reads only the ASCII header.
 
-Two visualization products supported visual quality control across all resolutions
+Three visualization products supported visual quality control across all resolutions
 (including the native grid): 
  - multi-panel PDF figures (a 12-panel monthly climatology and a
 per-year monthly sequence for each variable–depth) and 
  - GIF animations of the monthly fields over user-selected year ranges.
-
-Additionally, an interactive R Shiny Application was developed to interactively view the environmental drivers: 
-> [https://holdenharris.shinyapps.io/ches-icat-env-drivers/](https://holdenharris.shinyapps.io/ches-icat-env-drivers/)
+ - An interactive R Shiny Application was developed to interactively view the environmental drivers [`https://holdenharris.shinyapps.io/ches-icat-env-drivers/`](https://holdenharris.shinyapps.io/ches-icat-env-drivers/)
 
 These were used to confirm that fields were spatially coherent, correctly oriented, and free of regridding artifacts.
 
