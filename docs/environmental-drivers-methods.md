@@ -19,24 +19,28 @@ format:
      previously-unresolved DOIs are now identified (see References). Remaining nicety: complete the bibliographic
      entries for the ERA5 (Hersbach 2023) and Phase 6 watershed (Bhatt 2023) forcing datasets. -->
 
+## Repository and technical documentation
+
+Technical documentation of the workflow and reproduction are available here: [`../make-environmental-drivers/`](../make-environmental-drivers/) 
+
 ## Environmental data source
 
-Spatially resolved environmental conditions were derived from a multidecadal hindcast of
+Spatial-temporal environmental drivers were developed for the Ches-ICAT from a multidecadal hindcast of
 the Chesapeake Bay Environmental Forecast System (CBEFS; Bever et al. 2021). CBEFS is a
 real-time coupled hydrodynamic–biogeochemical model of Chesapeake Bay built on the
 Chesapeake Bay implementation of the Regional Ocean Modeling System (ChesROMS; Xu et al.
-2012), coupled to the Estuarine–Carbon–Biogeochemistry module (ECB; Feng et al. 2015)
-that carries the carbon and nitrogen state variables — including phytoplankton, nitrate,
-and dissolved oxygen — used here. The 1985–2024 hindcast was produced with this ROMS-ECB
-system by Pierre St-Laurent (Virginia Institute of Marine Science) for the present study
-(file series `v20260112`, generated 12 January 2026) and provided as 40 annual files of
-daily-averaged fields. It is forced by the ERA5 atmospheric reanalysis (Hersbach et al.
+2012), coupled to the Estuarine–Carbon–Biogeochemistry module (ECB; Feng et al. 2015). 
+The ChesROMS-ECB produces carries the carbon and nitrogen state variables, including phytoplankton, nitrate,
+and dissolved oxygen. It is forced by the ERA5 atmospheric reanalysis (Hersbach et al.
 2023), terrestrial freshwater and nutrient loads from the Chesapeake Bay Program Phase 6
 watershed model (Bhatt et al. 2023, distributed across ECB state variables following Irby
 and Friedrichs 2019), and atmospheric nitrogen deposition following Da et al. (2018)
 (St-Laurent and Friedrichs 2024).
 
-Five state variables were used, each available at three vertical levels — bottom
+The 1985–2024 hindcast was produced with the ChesROMS-ECB
+system by Pierre St-Laurent (Virginia Institute of Marine Science) for the present study
+(file series `v20260112`, generated 12 January 2026) as 40 annual files of
+daily-averaged fields. Five state variables were provided, each available at three vertical levels — bottom
 (`_bott`), surface (`_surf`), and depth-averaged (`_davg`) — giving 15 variable–depth
 combinations:
 
@@ -48,25 +52,11 @@ combinations:
 | `phytoplankton` | phytoplankton concentration | mmol N m⁻³ |
 | `NO3` | nitrate + nitrite | mmol N m⁻³ |
 
-The hindcast was run on the model's own horizontal grid: a 336 (east–west) × 564
-(north–south) grid that is regular in an oblique stereographic projection
-(`+proj=stere +lon_0=283.54 +lat_0=37.75`) at ~600 m resolution. This uniform 600 m
-configuration was developed for the multidecadal hindcast and atlas (St-Laurent and
-Friedrichs 2024), refining the coarser ~430 m–1 km grid of the earlier real-time forecast
-system (Bever et al. 2021). The model resolves the vertical with 20 terrain-following
-levels; the fields delivered here reduce that dimension to three representations per
-variable — bottom (the bottom level), surface (the surface level), and depth-averaged (the
-water-column mean from surface to bottom). The model bathymetry is a mosaic compiled from
-regional bathymetric and coastal-plain elevation datasets (National Geophysical Data Center
-1999; Forte et al. 2011; Pope et al. 2016; Ye et al. 2017; NOAA 2022). The exact longitude
-and latitude of every grid
-cell are stored as two-dimensional `longitude(y,x)` and `latitude(y,x)` arrays within each
-NetCDF file; because the grid is regular in projection space but curvilinear in geographic
-coordinates, it motivates the regridding approach below. The hindcast has been evaluated
-against the Chesapeake Bay Program Water Quality Monitoring Program (over three million
-matched model–observation pairs across 13 variables), with skill comparable to other
-established Chesapeake Bay models (Bever et al. 2021; Irby et al. 2016); skill diagnostics
-for this 1985–2024 hindcast are distributed with the atlas (St-Laurent and Friedrichs 2024).
+The hindcast was run on the model's own horizontal grid: a 336 (east–west) × 564 (north–south) grid that is regular in an oblique stereographic projection (`+proj=stere +lon_0=283.54 +lat_0=37.75`) at ~600 m resolution. This uniform 600 m configuration was developed for the multidecadal hindcast and atlas (St-Laurent and Friedrichs 2024), refining the coarser ~430 m–1 km grid of the earlier real-time forecast system (Bever et al. 2021). 
+
+The model resolves the vertical water column with 20 terrain-following levels; however, the fields delivered here reduce that dimension to three representations per variable: bottom (the bottom level), surface (the surface level), and depth-averaged (the water-column mean from surface to bottom). The model bathymetry is a mosaic compiled from regional bathymetric and coastal-plain elevation datasets (National Geophysical Data Center 1999; Forte et al. 2011; Pope et al. 2016; Ye et al. 2017; NOAA 2022). The exact longitude and latitude of every grid cell are stored as two-dimensional `longitude(y,x)` and `latitude(y,x)` arrays within each NetCDF file. Because the grid is regular in projection space but curvilinear in geographic, we applied the regridding approach describe below. 
+
+The hindcast has been evaluated against the Chesapeake Bay Program Water Quality Monitoring Program (over three million matched model–observation pairs across 13 variables), with skill comparable to other established Chesapeake Bay models (Bever et al. 2021; Irby et al. 2016); skill diagnostics for this 1985–2024 hindcast are distributed with the atlas (St-Laurent and Friedrichs 2024).
 
 ## Temporal aggregation
 
@@ -74,51 +64,34 @@ For the Ecospace application, we required monthly fields rather than daily value
 Monthly means were computed in a single pass while each annual file was held in memory,
 averaging all daily layers within each calendar month (ignoring missing values). This
 avoided writing and then re-reading the very large combined daily archive (~47 GB),
-which is chunked for storage rather than time-series access. The result is, for each of
-the 15 variable–depth combinations, one multi-year monthly stack covering 1985–2024
-(480 monthly layers).
+which is chunked for storage rather than for time-series access. The result is, for each of
+the 15 variable–depth combinations, we produce one multi-year monthly stack covering 1985–2024
+(480 monthly layers). These raster stacks, produced for each `<var><depth>` combination, are written out for Ecospace (as ASCII files), or used to create graphic plots. 
 
 ## Coordinate system and regridding
 
-Regridding the CBEFS outputs for Ecospace meant placing outputs from a curvilinear model 
-onto the regular geographic grids used by Ecospace. Because the CBEFS grid is
-curvilinear in geographic space (i.e., its rows and columns are regular only in the native
-oblique-stereographic projection) standard raster resampling (e.g. `terra::resample`,
-which assumes a regular source grid) does not apply. Reconstructing the source
-projection analytically would require assumptions about the datum and origin. We
-therefore treated the stored `longitude`/`latitude` arrays as ground truth and regridded
-through them directly. (This 600 m grid is the model's own computational grid, so the
-regridding described here — onto the Ecospace basemaps — is the only horizontal
-interpolation applied to the fields; the provider reduced only the vertical dimension to
-the three depth representations.)
+Ecospace uses a regular geographic grid. Because the CBEFS grid is curvilinear in geographic space (i.e., its rows and columns are regular only in the native oblique-stereographic projection) standard raster resampling (e.g. `terra::resample`, which assumes a regular source grid) does not apply. Reconstructing the source projection analytically would require assumptions about the datum and origin. 
 
-Processing kept the native model fields in **index space with no coordinate reference
-system assigned**, and georeferenced **once**, late in the pipeline, at the regridding
-step. Two design consequences follow. First, the monthly stacks are stored north-up via
-a single vertical flip applied when the data are read; the same flip is applied to the
-longitude/latitude arrays when the regridding index is built, so cell ordering between
-the data and its coordinates is guaranteed to match without any orientation guessing.
+We therefore treated the stored `longitude`/`latitude` arrays as ground truth and regridded
+through them directly. This 600 m grid is the model's own computational grid, so the
+regridding described here onto the Ecospace basemaps is the only horizontal
+interpolation applied to the fields. The vertical dimensions were already simplified to the three depth representations.
+
+Processing kept the native model fields in index space with no coordinate reference
+system assigned. To regrid the outputs, the data was and georeferenced at the regridding
+step in the pipeline (`regrid-to-basemaps.R`). Two design consequences follow. First, the monthly stacks are stored north-up via a single vertical flip applied when the data are read; the same flip is applied to the longitude/latitude arrays when the regridding index is built, so cell ordering between the data and its coordinates is guaranteed to match without any orientation guessing.
 Second, the geographic transformation is performed exactly once per target grid rather
 than repeatedly for every variable, depth, and month.
 
-Regridding proceeds in two steps. First, a **regrid index** is built once per target basemap:
-each source cell's (longitude, latitude) pair (with longitudes normalized from the
-0–360° to the −180–180° convention) is mapped to the target basemap cell that contains
-it. The native ~600 m resolution is finer than every target grid, so multiple source
-cells fall within each target cell, and the mapping is many-to-one. Second, the **regridded
-value** for each target cell is then computed as the mean of all source cells assigned to it. 
-Specifically, it is calculated as a vectorized group-mean across all 480 layers in a single pass; missing
-source values are excluded per target cell, and target cells receiving no source
-coverage are set to missing. Because the source is finer than the target, this
-many-to-one averaging is the appropriate (mass-preserving in the mean sense) operation
-for the fine→coarse transformation; on the order of 140,000 of the 189,504 native cells
-fall within the bay-covering basemaps.
+Regridding proceeds in two steps. First, a regrid index is built once per target basemap: each cell's lat-long pair (note that longitudes are normalized from the 0–360° to the −180–180° convention) is mapped to the target basemap cell that contains it. Second, the egridded value for each target cell is then computed as the mean of all source cells assigned to it.  Specifically, it is calculated as a vectorized group-mean across all 480 layers in a single pass; missing source values are excluded per target cell, and target cells receiving no source coverage are set to missing. 
+
+The native ~600 m resolution is finer than every target grid, so multiple source cells fall within each target cell, and the mapping is many-to-one. Because the source is finer than the target, this many-to-one averaging is the appropriate (mass-preserving in the mean sense) operation for the fine→coarse transformation; on the order of 140,000 of the 189,504 native cells fall within the bay-covering basemaps.
 
 Coordinate reference handling is correspondingly explicit: native stacks carry no CRS
-(index space); the target basemaps are assigned WGS84 (EPSG:4326) on load; the regridded
-stacks inherit that geographic grid; and the final ASCII grids are written without a CRS,
+(index space); the target basemaps are assigned WGS84 (EPSG:4326) on load. The regridded
+stacks inherit that geographic grid, and the final ASCII grids are written without a CRS,
 since the ESRI ASCII format encodes geometry directly in its header and the Ecospace
-basemap is itself stored CRS-less. The regridded monthly stacks are cached to disk (one
+basemap is itself stored without a CRS reference. The regridded monthly stacks are cached to disk (one
 NetCDF per variable–depth per basemap) so that all downstream products read pre-regridded
 data and no regridding is repeated.
 
@@ -135,10 +108,10 @@ as integer aggregations of a base depth grid:
 | F03 | 59 × 37   | coarse |
 | F04 | 44 × 28   | coarsest |
 
-Producing drivers at several resolutions supports sensitivity analysis of model
+Producing drivers at several resolutions can support sensitivity analysis of model
 behavior to spatial grain and allows the Ecospace configuration to trade spatial detail
 against computational cost. The native CBEFS grid (336 × 564, here labeled F00) was
-retained for full-resolution visualization and comparison but is not used as an Ecospace
+retained for full-resolution visualization and comparison, but it is not used as an Ecospace
 driver. 
 
 ## Driver products and quality assurance
@@ -152,11 +125,12 @@ keep the driver directories clean for Ecospace import, only the `.asc` grids wer
 the auxiliary sidecar files that the GIS toolchain emits by default (a projection file and
 two metadata files) were suppressed, as Ecospace reads only the ASCII header.
 
-Two visualization products supported visual quality control across all resolutions
+Three visualization products supported visual quality control across all resolutions
 (including the native grid): 
  - multi-panel PDF figures (a 12-panel monthly climatology and a
 per-year monthly sequence for each variable–depth) and 
- - GIF animations of the monthly fields over user-selected year ranges. 
+ - GIF animations of the monthly fields over user-selected year ranges.
+ - An interactive R Shiny Application was developed to interactively view the environmental drivers [`https://holdenharris.shinyapps.io/ches-icat-env-drivers/`](https://holdenharris.shinyapps.io/ches-icat-env-drivers/)
 
 These were used to confirm that fields were spatially coherent, correctly oriented, and free of regridding artifacts.
 
