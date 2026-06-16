@@ -64,7 +64,7 @@ VAR_STYLES <- list(
   diss_o2       = list(label = "Dissolved oxygen", units = "mg O₂ L⁻¹",
                        palette = "YlGnBu", rev = FALSE),
   phytoplankton = list(label = "Phytoplankton",    units = "mmol N m⁻³",
-                       palette = "YlGn",   rev = TRUE),   # darker green = higher
+                       palette = "YlGn",   rev = TRUE),   ## darker green = higher
   NO3           = list(label = "Nitrate",          units = "mmol N m⁻³",
                        palette = "Purples", rev = FALSE)
 )
