@@ -100,6 +100,10 @@ Suggested labels:
   `variable`, shared across depths *and* across all 480 months, so panels and animation
   frames are directly comparable. Compute the domain once at startup as robust 1–99 %
   quantiles (resist outliers) across all layers and depths of that variable; cache it.
+- **Per-variable palette override — phytoplankton:** use a **green sequential** scale
+  where **higher values are darker green and lower values are lighter**, instead of the
+  default viridis used for the other variables. Drive the palette from a per-variable
+  lookup so further overrides are easy to add.
 
 ---
 
@@ -144,9 +148,13 @@ Suggested labels:
 
 ## 6. Rendering spec (one panel)
 
-- `geom_raster(aes(x, y, fill = value))` +
-  `scale_fill_viridis_c(limits = <fixed per-variable domain>, name = "<units>")`
-  (viridis is already used elsewhere in the repo).
+- `geom_raster(aes(x, y, fill = value))` + a per-variable fill scale with
+  `limits = <fixed per-variable domain>` and `name = "<units>"`:
+  - default variables → `scale_fill_viridis_c(...)` (viridis is already used in the repo).
+  - **phytoplankton** → green sequential, **darker = higher**, e.g.
+    `scale_fill_gradient(low = "#f7fcf5", high = "#00441b", limits = ...)` or
+    `scale_fill_distiller(palette = "Greens", direction = 1, limits = ...)`.
+  - Implement as a `palette_for(var)` lookup so adding more overrides is trivial.
 - **Land:** render basemap-NA cells as grey — either a background `geom_raster` of the
   mask, or a grey panel background showing through the water raster.
 - **Coastline:** `rnaturalearth::ne_states("United States of America")` /
