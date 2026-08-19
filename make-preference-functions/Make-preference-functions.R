@@ -121,13 +121,13 @@ for (i in seq_len(nrow(var_pref))){
 }
 
 ## Write out depth matrix for Ecospace
-write.csv(pref_mat, file.path(dir_out, paste0("pref-funcs_", driver,  ".csv")), row.names = T)
+#write.csv(pref_mat, file.path(dir_out, paste0("pref-funcs_", driver,  ".csv")), row.names = T)
 
 
 ## -----------------------------------------------------------------------------
 ## Make plots
 
-#dir_pdf = "./Ecospace-preference-functions/figures/"
+dir_pdf = "./Ecospace-preference-functions/"
 n_rows = 4 ## Number of plots per row on a page
 n_cols = 3 ## Number of plots per column on a page
 #pg_plts = nwide * nhigh
