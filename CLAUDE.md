@@ -17,6 +17,7 @@ All scripts are standalone (no `source()` dependencies). Run in this order:
 | Step | Script | Key user flags |
 |------|--------|----------------|
 | 1 | `make-habitat-maps/make-baythymetry-basemap.R` | None — downloads live from NOAA |
+| 1b | `make-habitat-maps/revise-basemap.R` | `apply_revisions`, `overwrite_original`, `exclude_patches`, `bridge_depth_m` — writes `base-depth-map-F02-88x56-revised.asc` (waterline QA, connectivity bridges, ocean clip at Bay mouth; see [`make-habitat-maps/README.md`](make-habitat-maps/README.md)) |
 | 2 | `make-habitat-maps/make-jurisdictional-maps.R` | `pot_buffer_m` (default 7200 m) |
 | 3 | `make-environmental-drivers/process-CBEFS.R` **(env-driver Stage 1)** | `run_mode <- "TEST"\|"FULL"`, `out_format <- "NC"\|"TIFF"\|"BOTH"`, `write_daily_stack`, `write_monthly_stack` |
 | 4 | `make-environmental-drivers/run-environmental-drivers.R` **(env-driver Stages 2–3, orchestrator)** | `do_regrid/ascii/pdf/gif`, `resolutions`, `variables_to_run`, `gif_prefixes`, `gif_start_year/end_year` |
@@ -117,6 +118,7 @@ Each will need to: read source data → resample to basemap → write `.asc` + P
 4. **Missing lower trophic FGs** — Bivalves, Benthic Invertebrates, SAV, Zooplankton, Phytoplankton, Detritus not yet in `species-list.csv` or `env-pref-parameters.csv`
 5. **Missing habitat layer scripts** — SAV, soft-bottom, hard-bottom, oyster, marsh
 6. **`dispersal-rates/`** — empty placeholder directory
+7. **Revised F02 basemap not yet adopted downstream** — `base-depth-map-F02-88x56-revised.asc` (fully connected, ocean-clipped; see `make-habitat-maps/README.md`) exists alongside the original; env-driver regridding and `make-jurisdictional-maps.R` still target the original `base-depth-map-F02-88x56.asc`
 
 ---
 

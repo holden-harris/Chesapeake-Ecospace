@@ -120,3 +120,12 @@ Thumbs.db
 # External hard-drive or network paths
 *.tmp
 *.bak
+
+## ETOPO csv cache from make-habitat-maps/revise-basemap.R (regenerable download)
+data-inputs/spatial-static/etopo/
+
+## Basemap review figures embedded in make-habitat-maps/README.md (~4 MB total)
+!make-habitat-maps/plots/basemap-waterline-review-F02.png
+!make-habitat-maps/plots/basemap-waterline-review-F02-zooms.png
+!make-habitat-maps/plots/basemap-isolated-patches-F02.png
+!make-habitat-maps/plots/basemap-revised-F02.png
